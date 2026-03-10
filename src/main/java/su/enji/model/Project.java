@@ -13,6 +13,7 @@ public record Project(Origin origin,
 
                       String name,
                       String description,
+                      String jvmArgs,
                       boolean autoUpdate,
                       Set<Token> tokens,
                       List<Variable> variables,

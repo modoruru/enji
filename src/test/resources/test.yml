@@ -5,6 +5,7 @@ project:
     path: src/test/resources/test.yml
   name: test configuration
   description: test configuration
+  jvm_args: "-Xmx8G -Xms1G"
   auto_update: true
   tokens:
     - github
@@ -21,6 +22,7 @@ variables:
     default: 25566
   resourcepack_public_ip:
     description: resourcepack public ip which will be used for sending pack to players
+    default: "localhost:25566"
 
 core:
   # paper, purpur

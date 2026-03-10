@@ -62,4 +62,21 @@ public final class IOUtil {
         }
     }
 
+    public static void deleteFileRecursively(File file) {
+        if(!file.exists()) return;
+
+        if(file.isFile()) {
+            file.delete();
+            return;
+        }
+
+        File[] files = file.listFiles();
+        assert files != null;
+
+        for (File file1 : files) {
+            deleteFileRecursively(file1);
+        }
+        file.delete();
+    }
+
 }

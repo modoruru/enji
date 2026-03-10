@@ -1,5 +1,6 @@
 package su.enji;
 
+import org.json.JSONObject;
 import su.enji.core.CoreResolver;
 import su.enji.core.DownloadExitCode;
 import su.enji.core.PaperCoreResolver;
@@ -24,10 +25,7 @@ import su.enji.util.Pair;
 import su.enji.yaml.YamlReader;
 import su.enji.yaml.YamlSection;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URI;
 
 import java.nio.file.Files;
@@ -135,6 +133,7 @@ public final class Enji {
         }
         matcher.appendTail(result);
 
+        output.getParentFile().mkdirs();
         Files.writeString(output.toPath(), result.toString());
         input.delete();
     }
@@ -152,7 +151,7 @@ public final class Enji {
     /**
      * @return error or nothing if installed successfully
      */
-    public Optional<String> install(Map<Token, String> tokens, Map<String, String> variables) {
+    public Optional<String> install(Map<Token, String> tokens, Map<String, String> variables, String javaPath) {
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         File tempFolder = new File(workingDirectory, ".enji/temp/");
         tempFolder.mkdirs();
@@ -310,6 +309,7 @@ public final class Enji {
                 printWarning("unable to resolve " + config.path() + " config file.");
                 continue;
             }
+            System.out.println();
 
             configsFiles.put(config.path(), configFile);
         }
@@ -345,7 +345,34 @@ public final class Enji {
             }
         }
 
-        printInfo("installed!");
+        printInfo("cleaning...");
+        IOUtil.deleteFileRecursively(tempFolder);
+
+        printInfo("creating installation metadata...");
+        JSONObject json = new JSONObject()
+                .put(
+                        "origin",
+                        new JSONObject()
+                                .put("repo", origin.repo())
+                                .put("branch", origin.branch())
+                                .put("path", origin.path())
+                )
+                .put("auto_update", project.autoUpdate())
+                .put("run_command", String.format(
+                        "%s %s -jar server.jar nogui",
+                        javaPath,
+                        project.jvmArgs()
+                ));
+
+        try (FileWriter writer = new FileWriter(new File(workingDirectory, ".enji/installation.json"))) {
+            writer.write(json.toString(2));
+            writer.flush();
+        }
+        catch (IOException _) {
+            return Optional.of("problem creating installation metadata");
+        }
+
+        printInfo("done!");
 
         return Optional.empty();
     }
@@ -372,8 +399,9 @@ public final class Enji {
 
         String name = projectSection.getString("name", "");
         String description = projectSection.getString("description", "");
-        if(name.isEmpty() || description.isEmpty())
-            return Optional.of("name or description is empty");
+        String jvmArgs = projectSection.getString("jvm_args", "");
+        if(name.isEmpty() || description.isEmpty() || jvmArgs.isEmpty())
+            return Optional.of("name, description or jvm_args is empty");
 
         YamlSection originSection = projectSection.getSection("origin");
         if(originSection == null) return Optional.of("\"origin\" section doesn't exists.");
@@ -562,6 +590,7 @@ public final class Enji {
                 ),
                 name,
                 description,
+                jvmArgs,
                 autoUpdate,
                 tokens,
                 variables,

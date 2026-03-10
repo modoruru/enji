@@ -6,6 +6,7 @@ import su.enji.model.Token;
 import su.enji.model.Variable;
 import su.enji.util.IOUtil;
 import su.enji.util.JSONUtil;
+import su.enji.util.JavaUtil;
 import su.enji.util.Pair;
 
 import java.io.File;
@@ -52,6 +53,23 @@ public class Main {
             printFatal("there's no active installation. run enji install first.");
             return;
         }
+
+        JSONObject body = JSONUtil.readFile(installationFile);
+        if(body.optBoolean("auto_update", false)) {
+            // todo: update
+        }
+
+        String runCommand = body.optString("run_command", null);
+        if(runCommand == null) {
+            printFatal("run command is not set");
+            System.exit(0);
+            return;
+        }
+
+        JavaUtil.start(
+                runCommand,
+                workingDirectory
+        );
     }
 
     private static void install() {
@@ -209,16 +227,30 @@ public class Main {
             }
         }
 
+        printInfo("choose java binary, leave empty to use \"java\"");
+        String javaPath;
+        while (true) {
+            System.out.print("java binary path > ");
+
+            javaPath = scanner.nextLine();
+            if(JavaUtil.checkJavaInstallation(javaPath)) break;
+
+            printFatal("java installation is not valid");
+        }
+
         printInfo("all set! installing project...");
 
         Optional<String> installError = enji.install(
                 tokens,
-                variables
+                variables,
+                javaPath
         );
         if(installError.isPresent()) {
             printFatal("problem installing project");
             printFatal(installError.get());
             printFatal("execution aborted.");
+            System.exit(0);
+            return;
         }
 
         System.exit(0);
