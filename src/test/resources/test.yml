@@ -7,8 +7,6 @@ project:
   description: test configuration
   jvm_args: "-Xmx8G -Xms1G"
   auto_update: true
-  tokens:
-    - github
 
 # variables to ask user before installation
 variables:

@@ -59,15 +59,16 @@ public class Main {
             // todo: update
         }
 
-        String runCommand = body.optString("run_command", null);
-        if(runCommand == null) {
+        JSONObject runCommandBody = body.optJSONObject("run_command", null);
+        String command;
+        if(runCommandBody == null || (command = runCommandBody.optString("command", null)) == null) {
             printFatal("run command is not set");
             System.exit(0);
             return;
         }
 
         JavaUtil.start(
-                runCommand,
+                command,
                 workingDirectory
         );
     }
@@ -257,6 +258,15 @@ public class Main {
     }
 
     private static void modify() {
+        File workingDirectory = resolveWorkingDirectory();
+        if(workingDirectory == null) return;
+
+        File installationFile = new File(workingDirectory, ".enji/installation.json");
+        if(!installationFile.exists()) {
+            printFatal("there's no active installation. run enji install first.");
+            return;
+        }
+
 
     }
 

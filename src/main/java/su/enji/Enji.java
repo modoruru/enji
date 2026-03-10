@@ -1,5 +1,6 @@
 package su.enji;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import su.enji.core.CoreResolver;
 import su.enji.core.DownloadExitCode;
@@ -209,6 +210,7 @@ public final class Enji {
         // install hitori and modules
         Hitori hitori = project.hitori();
         File hitoriFile = new File(tempFolder, "hitori.jar");
+        File modulesFolder = new File(tempFolder, "modules/");
         Map<String, File> modulesFiles = new HashMap<>();
         if(hitori != null) {
             String version = hitori.version();
@@ -240,7 +242,6 @@ public final class Enji {
                 return Optional.of("unable to download release");
             System.out.println();
 
-            File modulesFolder = new File(tempFolder, "modules/");
             modulesFolder.mkdirs();
             for (HitoriModule module : hitori.modules()) {
                 String name = module.name();
@@ -346,9 +347,16 @@ public final class Enji {
         }
 
         printInfo("cleaning...");
-        IOUtil.deleteFileRecursively(tempFolder);
+        IOUtil.deleteFileRecursively(pluginsFolder);
+        IOUtil.deleteFileRecursively(coreFile);
+        IOUtil.deleteFileRecursively(hitoriFile);
+        IOUtil.deleteFileRecursively(modulesFolder);
 
         printInfo("creating installation metadata...");
+        JSONObject tokensBody = new JSONObject();
+        for (Map.Entry<Token, String> entry : tokens.entrySet()) {
+            tokensBody.put(entry.getKey().name().toLowerCase(), entry.getValue());
+        }
         JSONObject json = new JSONObject()
                 .put(
                         "origin",
@@ -358,11 +366,24 @@ public final class Enji {
                                 .put("path", origin.path())
                 )
                 .put("auto_update", project.autoUpdate())
-                .put("run_command", String.format(
-                        "%s %s -jar server.jar nogui",
-                        javaPath,
-                        project.jvmArgs()
-                ));
+                .put(
+                        "run_command",
+                        new JSONObject()
+                                .put("command", String.format(
+                                        "%s %s -jar server.jar nogui",
+                                        javaPath,
+                                        project.jvmArgs()
+                                ))
+                                .put(
+                                        "decomposed",
+                                        new JSONObject()
+                                                .put("java_path", javaPath)
+                                                .put("jvm_args", project.jvmArgs())
+                                )
+                )
+                .put("configs", new JSONArray().putAll(configsFiles.keySet()))
+                .put("variables", new JSONObject(variables))
+                .put("tokens", tokensBody);
 
         try (FileWriter writer = new FileWriter(new File(workingDirectory, ".enji/installation.json"))) {
             writer.write(json.toString(2));
@@ -507,8 +528,8 @@ public final class Enji {
                 if(pluginSourceSection == null)
                     return Optional.of("plugin \"" + pluginName + "\" doesn't have source.");
 
-                PluginSourceOrError pluginSourceOrError = readPluginSource(pluginName, pluginSourceSection, false);
-                if(pluginSourceOrError.error != null) return Optional.of(pluginSourceOrError.error);
+                var pluginSourceOrError = readPluginSource(pluginName, pluginSourceSection, false);
+                if(pluginSourceOrError.secondPresent()) return Optional.of(pluginSourceOrError.second());
 
                 List<Config> configs = new ArrayList<>();
                 List<String> rawConfigs = pluginSection.getStringList("configs");
@@ -528,7 +549,7 @@ public final class Enji {
 
                 plugins.add(new Plugin(
                         pluginName,
-                        pluginSourceOrError.pluginSource,
+                        pluginSourceOrError.first(),
                         configs
                 ));
             }
@@ -555,8 +576,8 @@ public final class Enji {
                     if(moduleSourceSection == null)
                         return Optional.of("module \"" + moduleKey + "\" doesn't have source.");
 
-                    PluginSourceOrError pluginSourceOrError = readPluginSource(moduleKey, moduleSourceSection, true);
-                    if(pluginSourceOrError.error != null) return Optional.of(pluginSourceOrError.error);
+                    var pluginSourceOrError = readPluginSource(moduleKey, moduleSourceSection, true);
+                    if(pluginSourceOrError.secondPresent()) return Optional.of(pluginSourceOrError.second());
 
                     List<Config> configs = new ArrayList<>();
                     List<String> rawConfigs = moduleSection.getStringList("configs");
@@ -574,7 +595,7 @@ public final class Enji {
                         }
                     }
 
-                    modules.add(new HitoriModule(moduleKey, pluginSourceOrError.pluginSource, configs));
+                    modules.add(new HitoriModule(moduleKey, pluginSourceOrError.first(), configs));
                 }
             }
 
@@ -603,14 +624,14 @@ public final class Enji {
         return Optional.empty();
     }
 
-    private PluginSourceOrError readPluginSource(String parentName, YamlSection sourceSection, boolean module) {
+    private Either<PluginSource, String> readPluginSource(String parentName, YamlSection sourceSection, boolean module) {
         String rawPluginSourceType = sourceSection.getString("type", "");
         PluginSourceType pluginSourceType;
         try {
             pluginSourceType = PluginSourceType.valueOf(rawPluginSourceType.toUpperCase());
         }
         catch (Exception _) {
-            return PluginSourceOrError.error(String.format(
+            return Either.ofSecond(String.format(
                     "%s \"%s\" source has wrong type: \"%s\"",
                     module ? "module" : "plugin",
                     parentName,
@@ -622,7 +643,7 @@ public final class Enji {
         switch (pluginSourceType) {
             case DIRECT -> {
                 String rawUri = sourceSection.getString("uri", "");
-                if(rawUri.isEmpty()) return PluginSourceOrError.error(String.format(
+                if(rawUri.isEmpty()) return Either.ofSecond(String.format(
                         "%s \"%s\" source has empty uri",
                         module ? "module" : "plugin",
                         parentName
@@ -631,7 +652,7 @@ public final class Enji {
                     pluginSource = PluginSource.createDirect(URI.create(rawUri));
                 }
                 catch (Exception _) {
-                    return PluginSourceOrError.error(String.format(
+                    return Either.ofSecond(String.format(
                             "%s \"%s\" source has malformed uri",
                             module ? "module" : "plugin",
                             parentName
@@ -643,7 +664,7 @@ public final class Enji {
                         tag = sourceSection.getString("tag", ""),
                         asset = sourceSection.getString("asset", "");
                 if(pluginRepo.isEmpty() || tag.isEmpty() || asset.isEmpty())
-                    return PluginSourceOrError.error(String.format(
+                    return Either.ofSecond(String.format(
                             "%s \"%s\" source repo, tag or asset is empty",
                             module ? "module" : "plugin",
                             parentName
@@ -654,19 +675,7 @@ public final class Enji {
             default -> pluginSource = null;
         }
 
-        return PluginSourceOrError.pluginSource(pluginSource);
-    }
-
-
-
-    private record PluginSourceOrError(PluginSource pluginSource, String error) {
-        static PluginSourceOrError error(String error) {
-            return new PluginSourceOrError(null, error);
-        }
-
-        static PluginSourceOrError pluginSource(PluginSource pluginSource) {
-            return new PluginSourceOrError(pluginSource, null);
-        }
+        return Either.ofFirst(pluginSource);
     }
 
 }

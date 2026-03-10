@@ -1,5 +1,6 @@
 plugins {
     id("java")
+    id("com.gradleup.shadow") version "9.0.0-beta4"
 }
 
 group = "su.enji"
@@ -21,4 +22,22 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+
+tasks {
+    shadowJar {
+        archiveClassifier.set("")
+    }
+
+    jar {
+        enabled = false
+        manifest {
+            attributes["Main-Class"] = "su.enji.Main"
+        }
+    }
+
+    build {
+        dependsOn(shadowJar)
+    }
 }
