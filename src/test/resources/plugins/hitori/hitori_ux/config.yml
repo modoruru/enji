@@ -1,0 +1,191 @@
+advertisements:
+  enabled: true
+  # In seconds
+  period: 1800
+  # Stay time. In seconds
+  stay: 5
+  list: []
+name_tags:
+  enabled: true
+  format: "%player_name%"
+  background: true
+tab:
+  # Set to false to disable tab processing
+  enabled: true
+  update_interval_seconds: 1
+  header:
+    - ""
+    - "example tab"
+    - ""
+  footer:
+    - ""
+    - "tps %tps% | mspt %mspt% | online %online% | ping %ping%"
+    - ""
+  player_name: "%sort_order% %player_name%"
+  # Yellow numbers to display right after the player name. Leave empty to display nothing. Placeholders are player_name, ping
+  objective: "<aqua>%ping%ms</aqua>"
+chat:
+  # Set to false to disable chat processing
+  enabled: true
+  # Module will try to replace username with formatted one in vanilla messages like advancements
+  replace_vanilla_username:
+    enabled: true
+    username_format: "%player_name%"
+  no_such_player: "There's no player with name <yellow>%player_name%</yellow>!"
+  mentions:
+    enabled: true
+    require_at_symbol: false
+    # Formatting for mention. <player_name> returns mentioned player name.
+    formatting: "<bold>%player_name%</bold>"
+    # Notification format. %mentioner_name% for name of who mentioned player and %player_name% for mentioned name. Gender for message will be taken from mentioner.
+    notification:
+      text:
+        male: "%mentioner_name% mentioned you."
+        female: "%mentioner_name% mentioned you."
+      sound:
+        name: "block.amethyst_block.hit"
+        volume: 1.0
+        pitch: 1.0
+  structure:
+    local: "<gray>| <white>%player_name%</white> ›</gray> <white><click:suggest_command:'/msg %player_name% '>%message%</white>"
+    global: "<#50f2b1>| <white>%player_name%</white> »</#50f2b1> <white><click:suggest_command:'/msg %player_name% '>%message%</white>"
+  direct_messages:
+    receiver_format: "<color:#479dff>[%sender_name% » I]:</color> <white><click:suggest_command:'/tell %sender_name% '>%message%</white>"
+    sender_format: "<color:#47ff8e>[I » %receiver_name%]:</color> <white><click:suggest_command:'/tell %receiver_name% '>%message%</white>"
+    receive_sound:
+      name: "block.amethyst_block.hit"
+      volume: 1.0
+      pitch: 1.0
+    cant_send_yourself: "You can't send message to yourself!"
+    no_recent_message: "We doesn't know anything about your recent messages, so use <yellow>/tell</yellow> instead!"
+    have_blocked:
+      male: "You can't send message to <yellow>%receiver_name%</yellow> because you've blocked him!"
+      female: "You can't send message to <yellow>%receiver_name%</yellow> because you've blocked her!"
+    are_blocked:
+      male: "You can't send message to <yellow>%receiver_name%</yellow> because he's blocked you!"
+      female: "You can't send message to <yellow>%receiver_name%</yellow> because she's blocked you!"
+  local_chat:
+    # Set value to -1 to make local chat on server
+    radius: 100
+    spying:
+      # %input% for original message, %formatted_input% for formatted input (not the full message), %formatted_message% for full message sent to players and %sender_name% for message sender name
+      format: "<color:gray>spying</color> %formatted_message%"
+      enabled_spying: "You've <u><green>enabled</u> spying mode."
+      disable_spying: "You've <u><red>disabled</u> spying mode."
+    nobody_heard_enabled: true
+    nobody_heard: "Nobody heard you."
+  join_quit:
+    # Insert a click event here with command /hello %player_name% to let already online players send hello message for joined
+    join:
+      male: "<click:run_command:'/hello %player_name%'>%player_name% <color:#47ff69>joined the server</color></click>"
+      female: "<click:run_command:'/hello %player_name%'>%player_name% <color:#47ff69>joined the server</color></click>"
+    quit:
+      male: "%player_name% <color:#ff4760>left the server</color>"
+      female: "%player_name% <color:#ff4760>left the server</color>"
+    # Sends a hello message by the player who sent /hello <player>
+    hello: "Hey, %player_name% :)"
+  ignoring:
+    ignored_now: "You are now ignoring <yellow>%ignored_name%</yellow> in %ignoring_type%."
+    already_ignored: "You are already ignoring <yellow>%ignored_name%</yellow> in %ignoring_type%!"
+    unignored_now: "You are no longer ignoring <yellow>%ignored_name%</yellow> in %ignoring_type%."
+    not_ignored: "You are not ignoring <yellow>%ignored_name%</yellow> in %ignoring_type%!"
+    cant_ignore_yourself: "You can't ignore yourself!"
+    list:
+      not_ignore_anyone: "You don't ignore anyone!"
+      # %n% for line break (if there is at least one entry, otherwise empty)
+      list_format: "Ignoring list:%n%%entries%"
+      # %n% for line break (if there is next entry, otherwise empty) or %c% for comma and space: ", " (also if there's next entry, otherwise empty)
+      entry_format: " - %ignored_name% <dark_gray>(%ignoring_type%)</dark_gray>%n%"
+      both: "both"
+      chat: "chat"
+      direct_messages: "dm"
+    chat: "<aqua>chat</aqua>"
+    direct_messages: "<aqua>direct messages</aqua>"
+    # Place a username here to make it impossible to ignore this player.
+    ignoring_resistant: []
+    try_to_ignore_resistant:
+      male: "You can't start ignoring this player, because he is ignoring-resistant!"
+      female: "You can't start ignoring this player, because she is ignoring-resistant!"
+  replacements:
+    enabled: true
+    all_format: "<gray>%formatted_replacement%</gray>"
+    ping: "%ping% ms"
+    location: "Coordinates: %x%; %y%; %z%"
+    playtime: "Playtime: %playtime%h"
+    mobkills: "Mobs kills: %mobkills%"
+    mineblocks: "Blocks mined: %mineblocks%"
+    deaths: "Deaths: %deaths%"
+    lastdeath: "Time since last death: %lastdeath%"
+    showitem: "%item%"
+    showinv: "%open_inventory%"
+    dice: "Dice: %dice%"
+    xp: "Experience: %xp_level% lvl."
+  gender:
+    # If disabled, server will always use male message variations.
+    enabled: true
+    now_man: "You've set the gender to <aqua>male</aqua>."
+    already_man: "You've already set the gender to <aqua>male</aqua>!"
+    now_woman: "You've set the gender to <aqua>female</aqua>."
+    already_woman: "You've already set the gender to <aqua>female</aqua>!"
+  first_visit:
+    enabled: true
+    seconds_to_spend: 180
+    message:
+      male: " \n  Hey, %player_name%! It seems you've played first 3 minutes on our server, we hope you're enjoying it :D\n  We've also prepared some pages for newbies:\n  - [example.com]\n  "
+      female: " \n  Hey, %player_name%! It seems you've played first 3 minutes on our server, we hope you're enjoying it :D\n  We've also prepared some pages for newbies:\n  - [example.com]\n  "
+    sound:
+      name: "block.amethyst_block.hit"
+      volume: 1.0
+      pitch: 1.0
+  shared_inventory_format: "<hover:show_text:'Click to view %player_name% inventory'><click:run_command:'/sharedinventory %shared_inventory_uuid%'>[%player_name% inventory]"
+  color_formatting: true
+events:
+  # Time zone for events. https://en.wikipedia.org/wiki/List_of_tz_database_time_zones (take TZ identifier from table)
+  time_zone: "Europe/Moscow"
+  already_hidden: "You've already hidden information about event!"
+  hidden: "Information about <bold>this</bold> event will no longer appear."
+  no_event: "There's no such event planned!"
+  already_planned: "There's already 3 events planned! End the old one using <yellow><click:run_command:'/event end'><hover:show_text:'Click to run this command'>[\"/event end\"]</yellow> to plan the new one!"
+  reminder: " <br>  Event planned: <color:#69a2ff>\"%event_name%\"</color><br>  %event_description%<br>  Start time: <color:#69a2ff>%event_start_time%</color><br>  <gray>To hide next reminders, click here <click:run_command:'/event ok %event_uuid%'><hover:show_text:'Click to run event info'>[Hide]</gray><br>  "
+  event_happening: " <br>  Event happening: <color:#69a2ff>\"%event_name%\"</color><br>  %event_description%<br>  <gray>To hide next reminders, click here: <click:run_command:'/event ok %event_uuid%'><hover:show_text:'Click to run hide event info'>[Hide]</gray><br>  "
+  reminder_sound:
+    name: "block.amethyst_block.hit"
+    volume: 1.0
+    pitch: 1.0
+  ended: "<br>  Event <color:#69a2ff>\"%event_name%\"</color> has ended!<br>  We'll be waiting for you again :)<br>"
+  list:
+    list_format: "There's few active events:<br>%entries%"
+    # %n% for line break (if there is next entry, otherwise empty) or %c% for comma and space: ", " (also if there's next entry, otherwise empty)
+    entry_format: " - <click:run_command:/event view %event_uuid%><hover:show_text:'Click to view event description'><color:#69a2ff>[%event_name%]</click>%n%"
+streams:
+  start: " \n  %player_name% started the stream!\n  <color:#69a2ff><hover:show_text:'Click to open browser'><click:open_url:'%url_full%'>[Watch stream on %url_domain%]</color>\n  "
+  end: " \n  %player_name% ended the stream!\n  "
+  no_stream: "You didn't start stream"
+  no_stream_admin: "%player_name% didn't start the stream!"
+  already_started: "You've already started the stream!"
+  you_have_started: "You have started the stream!"
+  you_have_ended: "You have ended the stream!"
+  you_have_ended_admin: "You have ended the stream of %player_name%"
+  ongoing_streams:
+    list_format: "Ongoing streams:\n%entries%"
+    # %n% for line break (if there is next entry, otherwise empty) or %c% for comma and space: ", " (also if there's next entry, otherwise empty)
+    entry_format: " - %streamer_name%: <color:#69a2ff><hover:show_text:'Click to open browser'><click:open_url:'%url_full%'>[Watch stream on %url_domain%]</color>%n%"
+  non_allowed_domain: "Domain <yellow>\"%url_domain%\"</yellow> is not allowed. Allowed are: %allowed_domains%"
+  allowed_domains:
+    - "twitch.tv"
+    - "youtube.com"
+    - "youtu.be"
+  start_sound:
+    name: "block.amethyst_block.hit"
+    volume: 1.0
+    pitch: 1.0
+storage:
+  # default or thirdparty. leave thirdparty if you want other module to replace storage logic
+  implementation: "default"
+  default_implementation:
+    # mysql, h2
+    type: "h2"
+    host: "localhost:3306"
+    database: "database"
+    user: "root"
+    password: "root"

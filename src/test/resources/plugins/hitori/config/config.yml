@@ -1,0 +1,4 @@
+messages_util_prefixes:
+  info: "<color:#69A2FF>[info] » </color>"
+  error: "<color:#FF5555>[error] » </color>"
+  warning: "<color:#FFD45E>[warning] » </color>"

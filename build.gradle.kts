@@ -1,0 +1,24 @@
+plugins {
+    id("java")
+}
+
+group = "su.enji"
+version = "1.0"
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.jetbrains:annotations:26.1.0")
+    implementation("org.json:json:20250517")
+    implementation("org.yaml:snakeyaml:2.6")
+
+    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

@@ -1,0 +1,7 @@
+public_ip: "${enji:resourcepack_public_ip}"
+port: "${enji:resourcepack_port}"
+core_protect_support: true
+unable_to_apply_skin: "Unable to apply skin while posing."
+allow_resourcepack_to_play: "Enable resourcepack installation to playing on this server."
+error_installing_resourcepack: "An error occurred while installing the resourcepack."
+resourcepack_is_generating: "Resourcepack is being generated, rejoin later."

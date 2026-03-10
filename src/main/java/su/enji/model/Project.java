@@ -1,0 +1,27 @@
+package su.enji.model;
+
+import org.jetbrains.annotations.Nullable;
+import su.enji.model.core.Core;
+import su.enji.model.hitori.Hitori;
+import su.enji.model.plugin.Plugin;
+
+import java.util.List;
+import java.util.Set;
+
+// project collected from config
+public record Project(Origin origin,
+
+                      String name,
+                      String description,
+                      boolean autoUpdate,
+                      Set<Token> tokens,
+                      List<Variable> variables,
+
+                      Core core,
+
+                      @Nullable Hitori hitori,
+
+                      List<Plugin> plugins
+) {
+
+}
