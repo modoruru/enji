@@ -1,9 +1,6 @@
 package su.enji.util;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,13 +18,28 @@ public final class JavaUtil {
                     .command(path, "--version")
                     .start();
 
-            try (InputStream inputStream = process.getInputStream(); BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-                String line = reader.readLine();
-                return line != null && line.startsWith("java ");
+            try (InputStream inputStream = process.getInputStream()) {
+                String line = readStream(inputStream);
+                return line.contains("java") ||
+                        line.contains("jre") ||
+                        line.contains("jdk") ||
+                        line.contains("openjdk");
             }
         }
         catch (Exception e) {
             return false;
+        }
+    }
+
+    private static String readStream(InputStream stream) throws IOException {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            StringBuilder result = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                result.append(line).append("\n");
+            }
+            return result.toString();
         }
     }
 

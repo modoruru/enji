@@ -94,7 +94,8 @@ public class Main {
         File enjiDirectory = installationFile.getParentFile();
         enjiDirectory.mkdirs();
 
-        printInfo("welcome to enji! please provide a url to YAML configuration which would be installed.");
+        printInfo("welcome to enji!");
+        printInfo("please provide a url to YAML configuration which would be installed.");
         System.out.print("project uri > ");
 
         Scanner scanner = new Scanner(System.in);
@@ -131,7 +132,7 @@ public class Main {
             throw new RuntimeException(e);
         }
 
-        printInfo("parsing...");
+        printInfo("resolving...");
 
         Enji enji = new Enji(workingDirectory);
         Optional<String> parseError = enji.readProject(projectFile);
@@ -145,9 +146,8 @@ public class Main {
         Project project = enji.project();
 
         System.out.println();
-        printInfo("\"" + project.name() + "\" project.");
-        printInfo("description: \"" + project.description() + "\"");
-        System.out.println();
+        printInfo("Project \"" + project.name() + "\"");
+        printInfo("\"" + project.description() + "\"");
 
         Map<Token, String> tokens = new HashMap<>();
         if(!project.tokens().isEmpty()) {
@@ -161,6 +161,7 @@ public class Main {
             ));
 
             for (Token requiredTokenType : requiredTokens) {
+                System.out.println();
                 String token;
                 while (true) {
                     System.out.print(requiredTokenType.name().toLowerCase() + " token > ");
@@ -178,31 +179,18 @@ public class Main {
         if(!project.variables().isEmpty()) {
             if(!tokens.isEmpty()) System.out.println();
 
-            List<Variable> requiredVariables = project.variables();
-
-            printInfo("this project requires several variables to be set: " + String.join(
-                    ", ",
-                    requiredVariables.stream()
-                            .map(Variable::name)
-                            .map(String::toLowerCase)
-                            .toList()
-            ));
-
-            var iterator = requiredVariables.iterator();
-            while (iterator.hasNext()) {
+            for (Variable requiredVariable : project.variables()) {
                 System.out.println();
 
-                Variable requiredVariable = iterator.next();
                 String name = requiredVariable.name();
                 String defaultValue = requiredVariable.defaultValue();
 
-                StringBuilder variableInfo = new StringBuilder("set variable \"");
+                StringBuilder variableInfo = new StringBuilder("Variable \"");
                 variableInfo.append(name).append("\". \n");
-                variableInfo.append("description: \"").append(requiredVariable.description()).append("\"\n");
+                variableInfo.append("\"").append(requiredVariable.description()).append("\"\n");
 
-                if(defaultValue != null) {
-                    variableInfo.append("default value: ").append(defaultValue).append("\n");
-                    variableInfo.append("leave string empty to use default value\n");
+                if (defaultValue != null) {
+                    variableInfo.append("default value: \"").append(defaultValue).append("\", leave string empty to use default value\n");
                 }
 
                 System.out.print(variableInfo);
@@ -212,31 +200,31 @@ public class Main {
                     System.out.print("value > ");
 
                     value = scanner.nextLine();
-                    if(value.isEmpty() && defaultValue != null) {
+                    if (value.isEmpty() && defaultValue != null) {
                         value = defaultValue;
                         break;
                     }
 
-                    if(requiredVariable.matches(value) && !value.isEmpty()) break;
+                    if (requiredVariable.matches(value) && !value.isEmpty()) break;
                     else printFatal("doesn't matches variable pattern");
                 }
 
                 variables.put(name, value);
                 printInfo("set \"" + name + "\" variable to \"" + value + "\"");
-
-                if(iterator.hasNext()) System.out.println();
             }
         }
 
+        if(!variables.isEmpty() || !tokens.isEmpty()) System.out.println();
         printInfo("choose java binary, leave empty to use \"java\"");
         String javaPath;
         while (true) {
             System.out.print("java binary path > ");
 
             javaPath = scanner.nextLine();
+            if(javaPath.isEmpty()) javaPath = "java";
             if(JavaUtil.checkJavaInstallation(javaPath)) break;
 
-            printFatal("java installation is not valid");
+            printFatal("\"" + javaPath + "\" installation is not valid");
         }
 
         printInfo("all set! installing project...");

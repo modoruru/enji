@@ -14,7 +14,7 @@ public final class PrintUtil {
     }
 
     public static void printInfo(Object message) {
-        printStatus("info", "", message);
+        System.out.printf(":: %s\n",  message);
     }
 
     public static void printWarning(Object message) {
