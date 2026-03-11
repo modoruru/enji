@@ -15,26 +15,36 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 
 /**
+ * Resolves Paper-distributed Core (paper or velocity)
  * Based on paper's Fill API
  */
 public final class PaperCoreResolver implements CoreResolver {
 
-    private static final String VERSION_ENDPOINT = "https://fill.papermc.io/v3/projects/paper/versions/";
+    private static final String
+            VELOCITY = "velocity",
+            PAPER = "paper",
+            BASE_ENDPOINT = "https://fill.papermc.io/v3/projects/%s/versions/";
 
     private final ExecutorService executorService;
+    private final String versionEndpoint;
 
-    private PaperCoreResolver(ExecutorService executorService) {
+    private PaperCoreResolver(ExecutorService executorService, String paperProject) {
         this.executorService = executorService;
+        this.versionEndpoint = String.format(BASE_ENDPOINT, paperProject);
     }
 
-    public static PaperCoreResolver create(ExecutorService executorService) {
-        return new PaperCoreResolver(executorService);
+    public static PaperCoreResolver createVelocity(ExecutorService executorService) {
+        return new PaperCoreResolver(executorService, VELOCITY);
+    }
+
+    public static PaperCoreResolver createPaper(ExecutorService executorService) {
+        return new PaperCoreResolver(executorService, PAPER);
     }
 
     @Override
     public BlockingOperation<Integer> latestBuild(String version) {
         return BlockingOperation.run(executorService, () -> {
-            URL url = IOUtil.createURL(VERSION_ENDPOINT + version);
+            URL url = IOUtil.createURL(versionEndpoint + version);
 
             try {
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -62,7 +72,7 @@ public final class PaperCoreResolver implements CoreResolver {
     @Override
     public BlockingOperation<DownloadExitCode> downloadBuild(DownloadProgressConsumer downloadProgressConsumer, String version, int build, File output) {
         return BlockingOperation.run(executorService, () -> {
-            URL url = IOUtil.createURL(VERSION_ENDPOINT + version + "/builds/" + build);
+            URL url = IOUtil.createURL(versionEndpoint + version + "/builds/" + build);
 
             try {
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();

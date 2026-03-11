@@ -20,9 +20,9 @@ public record Project(Origin origin,
 
                       Core core,
 
-                      @Nullable Hitori hitori,
+                      List<Plugin> plugins,
 
-                      List<Plugin> plugins
+                      @Nullable Hitori hitori
 ) {
 
 }

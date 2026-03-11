@@ -23,10 +23,14 @@ variables:
     default: "localhost:25566"
 
 core:
-  # paper, purpur
-  type: paper
+  # paper, purpur, velocity
+  brand: paper
   minecraft_version: 1.21.11
-  version: "%latest%"
+  build: "%latest%"
+
+  # brand: velocity
+  # version: 3.5.0-SNAPSHOT
+  # build: "%latest%"
 
 plugins:
   CommandAPI:

@@ -13,7 +13,7 @@ import su.enji.model.config.Config;
 import su.enji.model.config.ConfigSource;
 import su.enji.model.config.ConfigsRepository;
 import su.enji.model.core.Core;
-import su.enji.model.core.CoreType;
+import su.enji.model.core.CoreBrand;
 import su.enji.model.hitori.Hitori;
 import su.enji.model.hitori.HitoriModule;
 import su.enji.model.plugin.Plugin;
@@ -178,16 +178,19 @@ public final class Enji {
         // install core
         Core core = project.core();
         File coreFile = new File(tempFolder, "core.jar");
-        switch (core.type()) {
-            case PAPER, PURPUR -> {
+        switch (core.brand()) {
+            case PAPER, PURPUR, VELOCITY -> {
                 String minecraftVersion = core.minecraftVersion();
-                String version = core.version();
+                String version = core.build();
                 assert minecraftVersion != null && version != null;
 
                 int build;
-                CoreResolver coreResolver = core.type() == CoreType.PAPER
-                        ? PaperCoreResolver.create(executorService)
-                        : PurpurCoreResolver.create(executorService);
+                CoreResolver coreResolver = switch (core.brand()) {
+                    case PAPER -> PaperCoreResolver.createPaper(executorService);
+                    case PURPUR -> PurpurCoreResolver.create(executorService);
+                    case VELOCITY -> PaperCoreResolver.createVelocity(executorService);
+                };
+
                 if(version.equalsIgnoreCase("%latest%"))
                     build = coreResolver.latestBuild(minecraftVersion).block();
                 else {
@@ -489,26 +492,38 @@ public final class Enji {
         if(coreSection == null)
             return Optional.of("\"core\" section doesn't exists.");
 
-        String rawCoreType = coreSection.getString("type", "");
-        CoreType coreType;
+        String rawCoreBrand = coreSection.getString("brand", "");
+        CoreBrand coreBrand;
         try {
-            coreType = CoreType.valueOf(rawCoreType.toUpperCase());
+            coreBrand = CoreBrand.valueOf(rawCoreBrand.toUpperCase());
         }
         catch (Exception _) {
-            return Optional.of("wrong core type \"" + rawCoreType + "\"");
+            return Optional.of("wrong core type \"" + rawCoreBrand + "\"");
         }
 
         String coreParseError = null;
-        Core core = switch (coreType) {
+        Core core = switch (coreBrand) {
             case PAPER, PURPUR -> {
                 String minecraftVersion = coreSection.getString("minecraft_version", "");
-                String version = coreSection.getString("version", "");
-                if(minecraftVersion.isEmpty() || version.isEmpty()) {
-                    coreParseError = "minecraft_version or version of core is empty";
+                String build = coreSection.getString("build", "");
+                if(minecraftVersion.isEmpty() || build.isEmpty()) {
+                    coreParseError = "minecraft_version or build of core is empty";
                     yield null;
                 }
 
-                yield coreType == CoreType.PAPER ? Core.paper(configsRepository, minecraftVersion, version) : Core.purpur(configsRepository, minecraftVersion, version);
+                yield coreBrand == CoreBrand.PAPER
+                        ? Core.paper(configsRepository, minecraftVersion, build)
+                        : Core.purpur(configsRepository, minecraftVersion, build);
+            }
+            case VELOCITY -> {
+                String version = coreSection.getString("version", "");
+                String build = coreSection.getString("build", "");
+                if(version.isEmpty() || build.isEmpty()) {
+                    coreParseError = "version or build of core is empty";
+                    yield null;
+                }
+
+                yield Core.velocity(configsRepository, version, build);
             }
         };
 
@@ -559,6 +574,7 @@ public final class Enji {
         YamlSection hitoriSection = config.getSection("hitori");
         Hitori hitori;
         if(hitoriSection == null) hitori = null;
+        else if(coreBrand == CoreBrand.VELOCITY) return Optional.of("hitori is incompatible with velocity core.");
         else {
             String version = hitoriSection.getString("version", "");
             if(version.isEmpty()) return Optional.of("hitori version is empty");
@@ -616,8 +632,8 @@ public final class Enji {
                 tokens,
                 variables,
                 core,
-                hitori,
-                plugins
+                plugins,
+                hitori
         );
         this.configsRepository = configsRepository;
 

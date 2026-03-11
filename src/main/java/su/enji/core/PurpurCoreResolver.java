@@ -12,7 +12,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 
-// https://api.purpurmc.org/v2/purpur/1.21.11
 public final class PurpurCoreResolver implements CoreResolver {
 
     private static final String PURPUR_ENDPOINT = "https://api.purpurmc.org/v2/purpur/";

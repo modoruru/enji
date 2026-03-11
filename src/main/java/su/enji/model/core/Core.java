@@ -9,24 +9,24 @@ import java.util.List;
 
 public final class Core {
 
-    private final CoreType type;
+    private final CoreBrand brand;
     private final List<Config> configs;
 
     // paper, purpur
     @Nullable
     private final String minecraftVersion;
     @Nullable
-    private final String version;
+    private final String build;
 
-    private Core(CoreType type, List<Config> configs, @Nullable String minecraftVersion, @Nullable String version) {
-        this.type = type;
+    private Core(CoreBrand brand, List<Config> configs, @Nullable String minecraftVersion, @Nullable String build) {
+        this.brand = brand;
         this.configs = configs;
         this.minecraftVersion = minecraftVersion;
-        this.version = version;
+        this.build = build;
     }
 
-    public CoreType type() {
-        return type;
+    public CoreBrand brand() {
+        return brand;
     }
 
     public List<Config> configs() {
@@ -37,13 +37,25 @@ public final class Core {
         return minecraftVersion;
     }
 
-    public String version() {
-        return version;
+    public String build() {
+        return build;
     }
 
-    public static Core paper(ConfigsRepository configsRepository, String minecraftVersion, String version) {
+    public static Core velocity(ConfigsRepository configsRepository, String version, String build) {
         return new Core(
-                CoreType.PAPER,
+                CoreBrand.VELOCITY,
+                configsRepository.createMany(
+                        ConfigSource.CORE,
+                        "velocity.toml"
+                ),
+                version,
+                build
+        );
+    }
+
+    public static Core paper(ConfigsRepository configsRepository, String minecraftVersion, String build) {
+        return new Core(
+                CoreBrand.PAPER,
                 configsRepository.createMany(
                         ConfigSource.CORE,
                         "server.properties",
@@ -53,13 +65,13 @@ public final class Core {
                         "config/paper-world-defaults.yml"
                 ),
                 minecraftVersion,
-                version
+                build
         );
     }
 
-    public static Core purpur(ConfigsRepository configsRepository, String minecraftVersion, String version) {
+    public static Core purpur(ConfigsRepository configsRepository, String minecraftVersion, String build) {
         return new Core(
-                CoreType.PURPUR,
+                CoreBrand.PURPUR,
                 configsRepository.createMany(
                         ConfigSource.CORE,
                         "server.properties",
@@ -70,7 +82,7 @@ public final class Core {
                         "purpur.yml"
                 ),
                 minecraftVersion,
-                version
+                build
         );
     }
 
