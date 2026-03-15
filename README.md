@@ -5,8 +5,8 @@ It automates the installation and updating of server cores, plugins, and [hitori
 > [!CAUTION]
 > enji is a WIP project. be accurate with using it in production. currently, there's no documentation.
 # todo
-- [ ] auto-update on startup
-  - [ ] update logic
+- [x] auto-update on startup
+  - [x] update logic
 - [ ] modify command
 - [ ] assets support
 - [ ] documentation

@@ -6,7 +6,6 @@ import su.enji.model.config.Config;
 import su.enji.model.config.ConfigSource;
 import su.enji.model.config.ConfigsRepository;
 
-import java.util.List;
 import java.util.Map;
 
 public final class Hitori {
@@ -40,7 +39,7 @@ public final class Hitori {
     }
 
     public static Hitori create(ConfigsRepository configsRepository, String version, Map<String, HitoriModule> modules) {
-        return new Hitori(version, configsRepository.create(ConfigSource.HITORI, "hitori/config/config.yml"), modules);
+        return new Hitori(version, configsRepository.create(ConfigSource.HITORI, "plugins/hitori/config/config.yml"), modules);
     }
 
 
