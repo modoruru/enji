@@ -300,7 +300,13 @@ public final class Enji {
 
         // update is not needed
         // todo: possibly update core and hitori as they are can be resolved with %latest% placeholder
+        printInfo("installation is up-to-date");
         if(lastCommitOnRemote.equalsIgnoreCase(lastCommitHash)) return Optional.empty();
+        printInfo(String.format(
+                "HEAD is now at %s (current %s), updating",
+                lastCommitOnRemote.substring(0, 8),
+                lastCommitHash.substring(0, 8)
+        ));
 
         // https://raw.githubusercontent.com/modoruru/enji/refs/heads/dev/src/test/resources/test.yml
         URI uri;
@@ -329,9 +335,8 @@ public final class Enji {
 
         Project oldProject = project;
 
+        // tokens
         Map<Token, String> tokens = new HashMap<>();
-        Map<String, String> variables = new HashMap<>();
-
         for (Token token : project.tokens()) {
             String value = variablesBody.optString(token.name().toLowerCase());
             if(value != null && !value.isEmpty()) {
@@ -349,6 +354,8 @@ public final class Enji {
         );
         if(tokenValidationError.isPresent()) return tokenValidationError;
 
+        // variables
+        Map<String, String> variables = new HashMap<>();
         for (Variable variable : project.variables()) {
             String value = variablesBody.optString(variable.name());
             if(value != null && !value.isEmpty()) {
@@ -366,8 +373,9 @@ public final class Enji {
         );
         if(variableValidationError.isPresent()) return variableValidationError;
 
-        if(project.tokens().contains(Token.GITHUB))
-            gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
+        // reinitialize GitHub resolver with new token
+        if(project.tokens().contains(Token.GITHUB)) gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
+        else gitHubResolver = GitHubResolver.unauthorized(executorService);
 
         boolean core = false,
                 hitori = false,
@@ -440,6 +448,7 @@ public final class Enji {
         }
 
         if(hitori) {
+            printInfo("updating hitori...");
             boolean wasInstalled = oldProject.hitori() != null;
             Optional<String> hitoriInstallError = downloadHitori(project.hitori(), !wasInstalled);
             if(hitoriInstallError.isPresent())
@@ -462,6 +471,7 @@ public final class Enji {
                     new File(workingDirectory, HITORI_MODULES_DIR + name.replace(':', '_') + ".jar").delete();
                 }
 
+                printInfo("updating " + name + " module...");
                 var either = downloadModule(modulesFolder, name, entry.getValue());
                 if(either.firstPresent())
                     return Optional.of(either.first());
@@ -491,6 +501,7 @@ public final class Enji {
             }
 
             // install new
+            printInfo("updating " + plugin.name() + " plugin...");
             var either = downloadPlugin(pluginsFolder, plugin);
             if(either.firstPresent())
                 return Optional.of(either.first());
@@ -554,7 +565,7 @@ public final class Enji {
                                 .put("last_commit_hash", gitHubResolver.lastCommitHash(
                                         unboxedRepo[0], unboxedRepo[1],
                                         origin.branch()
-                                ))
+                                ).block())
                                 .put("core_build_id", coreBuildId)
                 )
                 .put("auto_update", project.autoUpdate())
@@ -626,8 +637,7 @@ public final class Enji {
         if(releaseAsset == null)
             return Optional.of("unable to resolve hitori release.");
 
-        if(installModules) printInfo("updating hitori...");
-        else printInfo("installing hitori...");
+        printInfo("downloading hitori...");
 
         if(!gitHubResolver.downloadReleaseAsset(DOWNLOAD_PROGRESS_CONSUMER, releaseAsset, hitoriFile).block())
             return Optional.of("unable to download release");
