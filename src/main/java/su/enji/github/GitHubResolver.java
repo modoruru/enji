@@ -65,7 +65,7 @@ public final class GitHubResolver {
 
                 connection.disconnect();
 
-                JSONObject responseBody = new JSONObject(new String(response, StandardCharsets.UTF_8));
+                JSONObject responseBody = new JSONArray(new String(response, StandardCharsets.UTF_8)).getJSONObject(0);
                 return responseBody.getString("sha");
             }
             catch (Exception _) {
