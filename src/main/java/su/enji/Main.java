@@ -1,18 +1,23 @@
 package su.enji;
 
 import org.json.JSONObject;
+import su.enji.model.Origin;
 import su.enji.model.Project;
 import su.enji.model.Token;
 import su.enji.model.Variable;
+import su.enji.model.core.CoreBrand;
 import su.enji.util.JSONUtil;
 import su.enji.util.JavaUtil;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.util.*;
 
-import static su.enji.util.PrintUtil.*;
+import static su.enji.util.PrintUtil.printFatal;
+import static su.enji.util.PrintUtil.printInfo;
 
 public class Main {
 
@@ -27,7 +32,7 @@ public class Main {
             case "install" -> install();
             case "modify" -> modify();
             default -> printHelp();
-        };
+        }
     }
 
     private static File resolveWorkingDirectory() {
@@ -77,6 +82,7 @@ public class Main {
         );
     }
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     private static void install() {
         File workingDirectory = resolveWorkingDirectory();
         if(workingDirectory == null) return;
@@ -238,6 +244,48 @@ public class Main {
             System.exit(0);
             return;
         }
+
+        System.out.println();
+        if(project.core().brand() != CoreBrand.VELOCITY) {
+            printInfo("do you agree with Minecraft EULA (https://aka.ms/MinecraftEULA)?");
+            printInfo("type \"yes\" to indicate your agreement, or anything else to deny it.");
+            System.out.print("> ");
+
+            String answer = scanner.nextLine();
+            if(!answer.equalsIgnoreCase("yes") && !answer.equalsIgnoreCase("y"))
+                printInfo("you've made your choice!");
+            else {
+                printInfo("saving your EULA agreement...");
+                try (FileWriter writer = new FileWriter(new File(workingDirectory, "eula.txt"))) {
+                    writer.write("eula=true");
+                    writer.flush();
+                }
+                catch (IOException e) {
+                    printFatal("unable to save EULA agreement");
+                }
+            }
+            System.out.println();
+        }
+
+        printInfo("installation process is done, here's quick summary");
+        Origin origin = project.origin();
+        System.out.printf("""
+                "%s"
+                description: "%s"
+                
+                origin:
+                  repository: %s
+                  branch: %s
+                  path: %s
+                
+                run command: "enji run"
+                """,
+                project.name(),
+                project.description(),
+                origin.repo(),
+                origin.branch(),
+                origin.path()
+        );
 
         System.exit(0);
     }

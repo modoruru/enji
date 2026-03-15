@@ -6,7 +6,10 @@ import su.enji.core.CoreResolver;
 import su.enji.core.DownloadExitCode;
 import su.enji.github.GitHubResolver;
 import su.enji.github.ReleaseAsset;
-import su.enji.model.*;
+import su.enji.model.Origin;
+import su.enji.model.Project;
+import su.enji.model.Token;
+import su.enji.model.Variable;
 import su.enji.model.config.Config;
 import su.enji.model.config.ConfigSource;
 import su.enji.model.config.ConfigsRepository;
@@ -27,7 +30,6 @@ import su.enji.yaml.YamlSection;
 
 import java.io.*;
 import java.net.URI;
-
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -37,7 +39,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static su.enji.util.PrintUtil.*;
+import static su.enji.util.PrintUtil.printInfo;
+import static su.enji.util.PrintUtil.printWarning;
 
 @SuppressWarnings("ResultOfMethodCallIgnored")
 public final class Enji {
@@ -300,8 +303,10 @@ public final class Enji {
 
         // update is not needed
         // todo: possibly update core and hitori as they are can be resolved with %latest% placeholder
-        printInfo("installation is up-to-date");
-        if(lastCommitOnRemote.equalsIgnoreCase(lastCommitHash)) return Optional.empty();
+        if(lastCommitOnRemote.equalsIgnoreCase(lastCommitHash)) {
+            printInfo("installation is up-to-date");
+            return Optional.empty();
+        }
         printInfo(String.format(
                 "HEAD is now at %s (current %s), updating",
                 lastCommitOnRemote.substring(0, 8),
@@ -420,6 +425,7 @@ public final class Enji {
             DownloadExitCode downloadExitCode = newCoreResolver.downloadBuild(DOWNLOAD_PROGRESS_CONSUMER, newCore.minecraftVersion(), newCoreBuildId, coreFile).block();
             if(downloadExitCode != DownloadExitCode.OK)
                 return Optional.of("problem downloading core. exit code " + downloadExitCode.name().toUpperCase());
+            System.out.println();
         }
 
         // hitori
@@ -450,9 +456,10 @@ public final class Enji {
         if(hitori) {
             printInfo("updating hitori...");
             boolean wasInstalled = oldProject.hitori() != null;
-            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), !wasInstalled);
+            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), !wasInstalled, false);
             if(hitoriInstallError.isPresent())
                 return hitoriInstallError;
+            System.out.println();
         }
 
         // update modules
@@ -615,7 +622,7 @@ public final class Enji {
         return Optional.empty();
     }
 
-    private Optional<String> downloadHitori(Hitori hitori, boolean installModules) {
+    private Optional<String> downloadHitori(Hitori hitori, boolean installModules, boolean sendDownloadMessage) {
         hitoriFile = new File(tempFolder, HITORI_JAR);
         modulesFolder = new File(tempFolder, "modules/");
         modulesFiles = new HashMap<>();
@@ -637,7 +644,7 @@ public final class Enji {
         if(releaseAsset == null)
             return Optional.of("unable to resolve hitori release.");
 
-        printInfo("downloading hitori...");
+        if(sendDownloadMessage) printInfo("downloading hitori...");
 
         if(!gitHubResolver.downloadReleaseAsset(DOWNLOAD_PROGRESS_CONSUMER, releaseAsset, hitoriFile).block())
             return Optional.of("unable to download release");
@@ -662,7 +669,7 @@ public final class Enji {
     private Either<String, File> downloadModule(File modulesFolder, String moduleName, HitoriModule module) {
         File pluginFile = new File(modulesFolder, moduleName.replace(':', '_') + ".jar");
 
-        printInfo("downloading plugin \"" + moduleName + "\"...");
+        printInfo("downloading module \"" + moduleName + "\"...");
         Optional<String> error = downloadFromPluginSource(
                 gitHubResolver,
                 module.source(),
@@ -773,7 +780,7 @@ public final class Enji {
 
         // install hitori and modules
         if(project.hitori() != null) {
-            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), true);
+            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), true, true);
             if(hitoriInstallError.isPresent())
                 return hitoriInstallError;
         }
@@ -803,7 +810,6 @@ public final class Enji {
 
         printInfo("creating installation metadata...");
         writeInstallationMetadata(tokens, variables, javaPath, coreBuildId);
-        printInfo("done!");
 
         return Optional.empty();
     }
