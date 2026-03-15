@@ -4,8 +4,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import su.enji.core.CoreResolver;
 import su.enji.core.DownloadExitCode;
-import su.enji.core.PaperCoreResolver;
-import su.enji.core.PurpurCoreResolver;
 import su.enji.github.GitHubResolver;
 import su.enji.github.ReleaseAsset;
 import su.enji.model.*;
@@ -22,6 +20,7 @@ import su.enji.model.plugin.PluginSourceType;
 import su.enji.request.DownloadProgressConsumer;
 import su.enji.util.Either;
 import su.enji.util.IOUtil;
+import su.enji.util.JSONUtil;
 import su.enji.util.Pair;
 import su.enji.yaml.YamlReader;
 import su.enji.yaml.YamlSection;
@@ -30,33 +29,83 @@ import java.io.*;
 import java.net.URI;
 
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static su.enji.util.PrintUtil.*;
 
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public final class Enji {
 
-    private static final String HITORI_REPO_OWNER = "modoruru";
-    private static final String HITORI_REPO = "hitori";
+    private static final String SERVER_JAR = "server.jar";
+    private static final String HITORI_JAR = "hitori.jar";
+    private static final String PLUGINS_DIR = "plugins/";
+    private static final String HITORI_MODULES_DIR = "plugins/hitori/";
+    private static final int BUFFER_SIZE = 4096;
+
+    private static final DownloadProgressConsumer DOWNLOAD_PROGRESS_CONSUMER = (percentage, bytesDownloaded) -> {
+        System.out.printf("\rdownloading... %.1f%% (%s kb)", percentage * 100, bytesDownloaded / 1024);
+        System.out.flush();
+    };
+
+    public static final String HITORI_REPO_OWNER = "modoruru";
+    public static final String HITORI_REPO = "hitori";
 
     private final File workingDirectory;
+    private final ExecutorService executorService;
+    private final File tempFolder;
 
     private Project project;
     private ConfigsRepository configsRepository;
+    private GitHubResolver gitHubResolver;
+
+    private File coreFile;
+    private Map<String, File> pluginsFiles;
+    private Map<String, File> configsFiles;
+
+    private File hitoriFile;
+    private File modulesFolder;
+    private int hitoriReleaseId = -1;
+    private Map<String, File> modulesFiles;
 
     Enji(File workingDirectory) {
         this.workingDirectory = workingDirectory;
+        this.executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        this.tempFolder = new File(workingDirectory, ".enji/temp/");
+    }
+
+    public static Optional<String> downloadProjectFile(File file, URI uri) {
+        try {
+            Pair<InputStream, Long> inputStreamAndSize = IOUtil.resolveToInputStream(uri);
+            if(inputStreamAndSize == null)
+                return Optional.of("unable to resolve project configuration");
+
+            try (InputStream inputStream = inputStreamAndSize.first(); FileOutputStream fos = new FileOutputStream(file)) {
+                byte[] buffer = new byte[BUFFER_SIZE];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
+                fos.flush();
+            }
+        }
+        catch (Exception e) {
+            return Optional.of("unable to resolve project configuration: " + e.getMessage());
+        }
+
+        return Optional.empty();
     }
 
     public Project project() {
         return project;
     }
 
-    private Optional<String> downloadFromPluginSource(GitHubResolver gitHubResolver, DownloadProgressConsumer downloadProgressConsumer, PluginSource pluginSource, File output) {
+    private Optional<String> downloadFromPluginSource(GitHubResolver gitHubResolver, PluginSource pluginSource, File output) {
         switch (pluginSource.type()) {
             case DIRECT -> {
                 URI uri = pluginSource.uri();
@@ -68,12 +117,12 @@ public final class Enji {
 
                     long size = inputStreamAndSize.second();
                     try (InputStream inputStream = inputStreamAndSize.first(); FileOutputStream fos = new FileOutputStream(output)) {
-                        byte[] buffer = new byte[4096];
+                        byte[] buffer = new byte[BUFFER_SIZE];
                         int bytesRead;
                         int totallyBytesRead = 0;
                         while ((bytesRead = inputStream.read(buffer)) != -1) {
                             totallyBytesRead += bytesRead;
-                            downloadProgressConsumer.update(
+                            Enji.DOWNLOAD_PROGRESS_CONSUMER.update(
                                     Math.clamp(totallyBytesRead / (double) size, 0, 1),
                                     totallyBytesRead
                             );
@@ -96,7 +145,7 @@ public final class Enji {
                 List<ReleaseAsset> releaseAssets = gitHubResolver.listAssetsOfRelease(
                         unboxedRepo[0],
                         unboxedRepo[1],
-                        Either.ofSecond(tag)
+                        gitHubResolver.releaseIdByTag(unboxedRepo[0], unboxedRepo[1], tag).block()
                 ).block();
 
                 ReleaseAsset releaseAsset = null;
@@ -110,7 +159,7 @@ public final class Enji {
                 if(releaseAsset == null)
                     return Optional.of("unable to resolve release");
 
-                if(!gitHubResolver.downloadReleaseAsset(downloadProgressConsumer, releaseAsset, output).block())
+                if(!gitHubResolver.downloadReleaseAsset(Enji.DOWNLOAD_PROGRESS_CONSUMER, releaseAsset, output).block())
                     return Optional.of("unable to download release");
             }
         }
@@ -118,7 +167,7 @@ public final class Enji {
         return Optional.empty();
     }
 
-    private void copyConfigAndProcessPlaceholders(File input, File output, Map<String, String> variables) throws IOException {
+    private void moveConfigAndProcessPlaceholders(File input, File output, Map<String, String> variables) throws IOException {
         String content = Files.readString(input.toPath());
 
         Pattern pattern = Pattern.compile("\\$\\{enji:([^}]+)\\}");
@@ -136,34 +185,545 @@ public final class Enji {
 
         output.getParentFile().mkdirs();
         Files.writeString(output.toPath(), result.toString());
-        input.delete();
     }
 
-    private boolean moveFile(File input, File output) {
+    private void moveFile(File input, File output) {
         try {
-            Files.move(input.toPath(), output.toPath());
-            return true;
+            Files.move(input.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE);
         }
         catch (Exception _) {
-            return false;
         }
+    }
+
+    private <T> Optional<String> validateRequiredItems(Set<T> requiredItems, Set<T> oldItems, Map<T, String> existingValues, Map<T, String> userSupplied, String itemType) {
+        Set<T> remaining = new HashSet<>(requiredItems);
+        remaining.removeAll(oldItems);
+
+        if(!remaining.isEmpty()) {
+            if(userSupplied == null)
+                return Optional.of("new project file requires new " + itemType + "s. please run \"enji update\" and enter them manually.");
+
+            remaining.removeAll(userSupplied.keySet());
+            if(!remaining.isEmpty()) {
+                return Optional.of("missing required " + itemType + "s: " + remaining);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> copyAndCleanup(boolean core, boolean plugins, boolean hitori, Map<String, String> variables) {
+        if(core) moveFile(coreFile, new File(workingDirectory, SERVER_JAR));
+
+        File outPluginsFolder = new File(workingDirectory, PLUGINS_DIR);
+        if(plugins) {
+            outPluginsFolder.mkdirs();
+
+            for (File pluginFile : pluginsFiles.values()) {
+                moveFile(pluginFile, new File(outPluginsFolder, pluginFile.getName()));
+                pluginFile.delete();
+            }
+        }
+
+        if(hitori && project.hitori() != null) {
+            outPluginsFolder.mkdirs();
+
+            moveFile(hitoriFile, new File(outPluginsFolder, HITORI_JAR));
+            hitoriFile.delete();
+
+            File outHitoriFolder = new File(outPluginsFolder, "hitori/");
+            outHitoriFolder.mkdir();
+            for (File moduleFile : modulesFiles.values()) {
+                moveFile(moduleFile, new File(outHitoriFolder, moduleFile.getName()));
+                moduleFile.delete();
+            }
+        }
+
+        for (Map.Entry<String, File> entry : configsFiles.entrySet()) {
+            String path = entry.getKey();
+            File configFile = entry.getValue();
+            try {
+                moveConfigAndProcessPlaceholders(configFile, new File(workingDirectory, path), variables);
+                configFile.delete();
+            }
+            catch (Exception e) {
+                return Optional.of("problem copying config \"" + path + "\": " + e.getMessage());
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    public Optional<String> update(Map<Token, String> userSuppliedTokens, Map<String, String> userSuppliedVariables) {
+        File enjiFolder = new File(workingDirectory, ".enji/");
+        File installationFile = new File(enjiFolder, "installation.json");
+        if(!installationFile.exists())
+            return Optional.of("installation doesn't exists in this folder.");
+
+        JSONObject json;
+        try {
+            json = JSONUtil.readFile(installationFile);
+        }
+        catch (Exception _) {
+            return Optional.of("malformed installation file.");
+        }
+
+        JSONObject originBody = json.optJSONObject("origin"),
+                versionBody = json.optJSONObject("version"),
+                tokensBody = json.optJSONObject("tokens"),
+                variablesBody = json.optJSONObject("variables");
+        if(originBody == null || versionBody == null || tokensBody == null || variablesBody == null)
+            return Optional.of("installation file misses \"origin\", \"tokens\", \"variables\" or/and \"version\" sections.");
+
+        String originRepo = originBody.optString("repo", null),
+                originBranch = originBody.optString("branch", null),
+                originPath = originBody.optString("path", null);
+        if(originRepo == null || originBranch == null || originPath == null)
+            return Optional.of("origin format of installation misses \"repo\", \"branch\" or/and \"path\" values.");
+
+        String[] unboxedRepo = originRepo.split("/", 2);
+        if(unboxedRepo.length != 2) return Optional.of("malformed origin repo format");
+
+        String lastCommitHash = versionBody.optString("last_commit_hash", null);
+        if(lastCommitHash == null)
+            return Optional.of("installation file missed information about last commit.");
+
+        String githubToken = tokensBody.optString(Token.GITHUB.name().toLowerCase(), null);
+
+        if(githubToken == null) gitHubResolver = GitHubResolver.unauthorized(executorService);
+        else gitHubResolver = GitHubResolver.authorized(executorService, githubToken);
+
+        String lastCommitOnRemote = gitHubResolver.lastCommitHash(
+                unboxedRepo[0],
+                unboxedRepo[1],
+                originBranch
+        ).block();
+
+        // update is not needed
+        // todo: possibly update core and hitori as they are can be resolved with %latest% placeholder
+        if(lastCommitOnRemote.equalsIgnoreCase(lastCommitHash)) return Optional.empty();
+
+        // https://raw.githubusercontent.com/modoruru/enji/refs/heads/dev/src/test/resources/test.yml
+        URI uri;
+        try {
+            uri = URI.create(String.format(
+                    "https://raw.githubusercontent.com/%s/refs/heads/%s/%s",
+                    originRepo,
+                    originBranch,
+                    originPath
+            ));
+        }
+        catch (Exception _) {
+            return Optional.of("url of remote project file is malformed. fix your origin configuration and reinstall the project from the scratch.");
+        }
+
+        File remoteProjectFile = new File(enjiFolder, "update.yml");
+        Enji.downloadProjectFile(remoteProjectFile, uri);
+
+        // read old one
+        File currentProjectFile = new File(enjiFolder, "project.yml");
+        readProject(currentProjectFile);
+
+        Optional<String> readError = readProject(currentProjectFile);
+        if(readError.isPresent())
+            return readError.map(str -> "unable to read old project file: " + str);
+
+        Project oldProject = project;
+
+        Map<Token, String> tokens = new HashMap<>();
+        Map<String, String> variables = new HashMap<>();
+
+        for (Token token : project.tokens()) {
+            String value = variablesBody.optString(token.name().toLowerCase());
+            if(value != null && !value.isEmpty()) {
+                tokens.put(token, value);
+            }
+        }
+        if(userSuppliedTokens != null) tokens.putAll(userSuppliedTokens);
+
+        Optional<String> tokenValidationError = validateRequiredItems(
+                project.tokens(),
+                oldProject.tokens(),
+                tokens,
+                userSuppliedTokens,
+                "token"
+        );
+        if(tokenValidationError.isPresent()) return tokenValidationError;
+
+        for (Variable variable : project.variables()) {
+            String value = variablesBody.optString(variable.name());
+            if(value != null && !value.isEmpty()) {
+                variables.put(variable.name(), value);
+            }
+        }
+        if(userSuppliedVariables != null) variables.putAll(userSuppliedVariables);
+
+        Optional<String> variableValidationError = validateRequiredItems(
+                new HashSet<>(project.variables().stream().map(Variable::name).collect(Collectors.toSet())),
+                oldProject.variables().stream().map(Variable::name).collect(Collectors.toSet()),
+                variables,
+                userSuppliedVariables,
+                "variable"
+        );
+        if(variableValidationError.isPresent()) return variableValidationError;
+
+        if(project.tokens().contains(Token.GITHUB))
+            gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
+
+        boolean core = false,
+                hitori = false,
+                plugins = false;
+
+        // first - core
+        Core oldCore = oldProject.core();
+        Core newCore = project.core();
+        if((oldCore.brand() == CoreBrand.VELOCITY) != (newCore.brand() == CoreBrand.VELOCITY))
+            return Optional.of("core has changed the type (from proxy to backend or vice versa). it's not supported.");
+
+        tempFolder.mkdirs();
+
+        CoreResolver newCoreResolver = newCore.brand().createCoreResolver(executorService);
+        File coreFile = new File(tempFolder, "core.jar");
+        int newCoreBuildId;
+        if(oldCore.same(newCore)) {
+            int oldBuildId = versionBody.getInt("core_build_id");
+            newCoreBuildId = Core.resolveBuildId(newCore, newCoreResolver);
+
+            if(oldBuildId != newCoreBuildId) {
+                printInfo(String.format(
+                        "updating core: %s -> %s",
+                        oldBuildId,
+                        newCoreBuildId
+                ));
+
+                printInfo("downloading core...");
+                core = true;
+            }
+        }
+        else {
+            printInfo("updating core...");
+            printInfo(String.format("old: [brand: %s, game %s]", oldCore.brand().name().toLowerCase(), oldCore.minecraftVersion()));
+            printInfo(String.format("new: [brand: %s, game %s]", newCore.brand().name().toLowerCase(), newCore.minecraftVersion()));
+            core = true;
+            newCoreBuildId = Core.resolveBuildId(newCore, newCoreResolver);
+        }
+
+        if(core) {
+            versionBody.put("core_build_id", newCoreBuildId);
+            DownloadExitCode downloadExitCode = newCoreResolver.downloadBuild(DOWNLOAD_PROGRESS_CONSUMER, newCore.minecraftVersion(), newCoreBuildId, coreFile).block();
+            if(downloadExitCode != DownloadExitCode.OK)
+                return Optional.of("problem downloading core. exit code " + downloadExitCode.name().toUpperCase());
+        }
+
+        // hitori
+        modulesFiles = new HashMap<>();
+        JSONObject hitoriBody = json.optJSONObject("hitori");
+        if((oldProject.hitori() == null) != (project.hitori() == null)) {
+            if(oldProject.hitori() == null) hitori = true;
+            else {
+                printInfo("hitori is no longer in the project, deleting it...");
+                if(hitoriBody == null)
+                    return Optional.of("installation doesn't contains info about hitori installation");
+
+                new File(workingDirectory, hitoriBody.getString("path")).delete();
+                for (Object rawModulesPath : hitoriBody.getJSONArray("modules_path")) {
+                    new File(workingDirectory, (String) rawModulesPath).delete();
+                }
+            }
+        }
+        else {
+            if(hitoriBody == null)
+                return Optional.of("installation doesn't contains info about hitori installation");
+
+            int oldReleaseId = hitoriBody.optInt("release_id");
+            int newReleaseId = Hitori.resolveReleaseId(project.hitori(), gitHubResolver);
+            if(oldReleaseId != newReleaseId) hitori = true;
+        }
+
+        if(hitori) {
+            boolean wasInstalled = oldProject.hitori() != null;
+            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), !wasInstalled);
+            if(hitoriInstallError.isPresent())
+                return hitoriInstallError;
+        }
+
+        // update modules
+        if(oldProject.hitori() != null && project.hitori() != null) {
+            Hitori newHitori = project.hitori(), oldHitori = oldProject.hitori();
+
+            Map<String, HitoriModule> oldModules = new HashMap<>(oldHitori.modules());
+            Map<String, HitoriModule> newModules = newHitori.modules();
+
+            for (Map.Entry<String, HitoriModule> entry : newModules.entrySet()) {
+                String name = entry.getKey();
+                HitoriModule oldModule = oldModules.remove(name);
+                HitoriModule newModule = entry.getValue();
+                if(oldModule != null) {
+                    if(newModule.source().equals(oldModule.source())) continue;
+                    new File(workingDirectory, HITORI_MODULES_DIR + name.replace(':', '_') + ".jar").delete();
+                }
+
+                var either = downloadModule(modulesFolder, name, entry.getValue());
+                if(either.firstPresent())
+                    return Optional.of(either.first());
+
+                modulesFiles.put(name, either.second());
+            }
+
+            for (Map.Entry<String, HitoriModule> entry : oldModules.entrySet()) {
+                String name = entry.getKey();
+                printInfo("uninstalling " + name + " module");
+                new File(workingDirectory, HITORI_MODULES_DIR + name.replace(':', '_') + ".jar").delete();
+            }
+        }
+
+        // plugins
+        Map<String, Plugin> oldPlugins = new HashMap<>(oldProject.plugins());
+        Map<String, Plugin> newPlugins = project.plugins();
+
+        File pluginsFolder = new File(tempFolder, PLUGINS_DIR);
+        pluginsFiles = new HashMap<>();
+        pluginsFolder.mkdirs();
+        for (Plugin plugin : newPlugins.values()) {
+            Plugin oldPlugin = oldPlugins.remove(plugin.name()); // we'll later iterate through old plugins which remained
+            if(oldPlugin != null) {
+                if(plugin.source().equals(oldPlugin.source())) continue;
+                new File(workingDirectory, PLUGINS_DIR + plugin.name() + ".jar").delete();
+            }
+
+            // install new
+            var either = downloadPlugin(pluginsFolder, plugin);
+            if(either.firstPresent())
+                return Optional.of(either.first());
+
+            plugins = true;
+            pluginsFiles.put(plugin.name(), either.second());
+        }
+
+        for (Plugin plugin : oldPlugins.values()) {
+            printInfo("uninstalling " + plugin.name() + " plugin");
+            new File(workingDirectory, PLUGINS_DIR + plugin.name() + ".jar").delete();
+        }
+
+        // configs
+        JSONArray array = json.optJSONArray("configs");
+        if(array != null) {
+            for (Object obj : array) {
+                new File(workingDirectory, (String) obj).delete();
+            }
+        }
+
+        configsFiles = new HashMap<>();
+        Optional<String> configsDownloadError = downloadConfigs();
+        if(configsDownloadError.isPresent())
+            return configsDownloadError;
+
+        Optional<String> metadataWriteError = writeInstallationMetadata(
+                tokens,
+                variables,
+                json.getJSONObject("run_command").getJSONObject("decomposed").optString("java_path"),
+                newCoreBuildId
+        );
+        if(metadataWriteError.isPresent())
+            return metadataWriteError;
+
+        return copyAndCleanup(core, plugins, hitori, variables);
+    }
+
+    private Optional<String> writeInstallationMetadata(Map<Token, String> tokens, Map<String, String> variables, String javaPath, int coreBuildId) {
+        JSONObject tokensBody = new JSONObject();
+        for (Map.Entry<Token, String> entry : tokens.entrySet()) {
+            tokensBody.put(entry.getKey().name().toLowerCase(), entry.getValue());
+        }
+
+        Origin origin = project.origin();
+
+        String[] unboxedRepo = origin.repo().split("/", 2);
+        if(unboxedRepo.length != 2) return Optional.of("malformed origin repo format");
+
+        JSONObject json = new JSONObject()
+                .put(
+                        "origin",
+                        new JSONObject()
+                                .put("repo", origin.repo())
+                                .put("branch", origin.branch())
+                                .put("path", origin.path())
+                )
+                .put(
+                        "version",
+                        new JSONObject()
+                                .put("last_commit_hash", gitHubResolver.lastCommitHash(
+                                        unboxedRepo[0], unboxedRepo[1],
+                                        origin.branch()
+                                ))
+                                .put("core_build_id", coreBuildId)
+                )
+                .put("auto_update", project.autoUpdate())
+                .put(
+                        "run_command",
+                        new JSONObject()
+                                .put("command", String.format(
+                                        "%s %s -jar %s nogui",
+                                        javaPath,
+                                        project.jvmArgs(),
+                                        SERVER_JAR
+                                ))
+                                .put(
+                                        "decomposed",
+                                        new JSONObject()
+                                                .put("java_path", javaPath)
+                                                .put("jvm_args", project.jvmArgs())
+                                )
+                )
+                .put("configs", new JSONArray().putAll(configsFiles.keySet()))
+                .put("variables", new JSONObject(variables))
+                .put("tokens", tokensBody);
+
+        if(project.hitori() != null) {
+            JSONArray modulesPaths = new JSONArray();
+            for (File value : modulesFiles.values()) {
+                modulesPaths.put(HITORI_MODULES_DIR + value.getName());
+            }
+
+            json.put(
+                    "hitori",
+                    new JSONObject()
+                            .put("path", PLUGINS_DIR + HITORI_JAR)
+                            .put("modules_paths", modulesPaths)
+                            .put("release_id", hitoriReleaseId)
+            );
+        }
+
+        try (FileWriter writer = new FileWriter(new File(workingDirectory, ".enji/installation.json"))) {
+            writer.write(json.toString(2));
+            writer.flush();
+        }
+        catch (IOException _) {
+            return Optional.of("problem creating installation metadata");
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<String> downloadHitori(Hitori hitori, boolean installModules) {
+        hitoriFile = new File(tempFolder, HITORI_JAR);
+        modulesFolder = new File(tempFolder, "modules/");
+        modulesFiles = new HashMap<>();
+
+        List<ReleaseAsset> releaseAssets = gitHubResolver.listAssetsOfRelease(
+                HITORI_REPO_OWNER,
+                HITORI_REPO,
+                hitoriReleaseId = Hitori.resolveReleaseId(hitori, gitHubResolver)
+        ).block();
+
+        ReleaseAsset releaseAsset = null;
+        for (ReleaseAsset asset : releaseAssets) {
+            if(asset.name().startsWith("hitori") && asset.name().endsWith(".jar")) {
+                releaseAsset = asset;
+                break;
+            }
+        }
+
+        if(releaseAsset == null)
+            return Optional.of("unable to resolve hitori release.");
+
+        if(installModules) printInfo("updating hitori...");
+        else printInfo("installing hitori...");
+
+        if(!gitHubResolver.downloadReleaseAsset(DOWNLOAD_PROGRESS_CONSUMER, releaseAsset, hitoriFile).block())
+            return Optional.of("unable to download release");
+        System.out.println();
+
+        if(installModules) {
+            modulesFolder.mkdirs();
+            for (Map.Entry<String, HitoriModule> entry : hitori.modules().entrySet()) {
+                String name = entry.getKey();
+
+                var either = downloadModule(modulesFolder, name, entry.getValue());
+                if(either.firstPresent())
+                    return Optional.of(either.first());
+
+                modulesFiles.put(name, either.second());
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private Either<String, File> downloadModule(File modulesFolder, String moduleName, HitoriModule module) {
+        File pluginFile = new File(modulesFolder, moduleName.replace(':', '_') + ".jar");
+
+        printInfo("downloading plugin \"" + moduleName + "\"...");
+        Optional<String> error = downloadFromPluginSource(
+                gitHubResolver,
+                module.source(),
+                pluginFile
+        );
+        if(error.isPresent())
+            return Either.ofFirst("problem downloading module \"" + moduleName + "\": " + error.get());
+
+        System.out.println();
+
+        return Either.ofSecond(pluginFile);
+    }
+
+    private Either<String, File> downloadPlugin(File pluginsFolder, Plugin plugin) {
+        String name = plugin.name();
+        File pluginFile = new File(pluginsFolder, name + ".jar");
+
+        printInfo("downloading plugin \"" + name + "\"...");
+        Optional<String> error = downloadFromPluginSource(
+                gitHubResolver,
+                plugin.source(),
+                pluginFile
+        );
+        if(error.isPresent())
+            return Either.ofFirst("problem downloading plugin \"" + name + "\": " + error.get());
+
+        System.out.println();
+
+        return Either.ofSecond(pluginFile);
+    }
+
+    private Optional<String> downloadConfigs() {
+        Origin origin = project.origin();
+
+        String[] unboxedRepo = origin.repo().split("/", 2);
+        if(unboxedRepo.length != 2) return Optional.of("malformed origin repo format");
+
+        File configsFolder = new File(tempFolder, "configs/");
+        configsFiles = new HashMap<>();
+        configsFolder.mkdirs();
+
+        String projectPath = origin.path();
+        int lastSeparator = projectPath.lastIndexOf('/');
+        String basePath;
+        if(lastSeparator == -1) basePath = "";
+        else basePath = projectPath.substring(0, lastSeparator + 1);
+
+        for (Config config : configsRepository.configs()) {
+            File configFile = new File(configsFolder, config.path());
+            configFile.getParentFile().mkdirs();
+
+            if(!gitHubResolver.downloadFile(DOWNLOAD_PROGRESS_CONSUMER, unboxedRepo[0], unboxedRepo[1], origin.branch(), basePath + config.path(), configFile).block()) {
+                printWarning("unable to resolve " + config.path() + " config file.");
+                continue;
+            }
+            System.out.println();
+
+            configsFiles.put(config.path(), configFile);
+        }
+
+        return Optional.empty();
     }
 
     /**
      * @return error or nothing if installed successfully
      */
     public Optional<String> install(Map<Token, String> tokens, Map<String, String> variables, String javaPath) {
-        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         File tempFolder = new File(workingDirectory, ".enji/temp/");
         tempFolder.mkdirs();
-        DownloadProgressConsumer downloadProgressConsumer = (percentage, bytesDownloaded) -> {
-            System.out.printf("\rdownloading... %.1f%% (%s kb)", percentage * 100, bytesDownloaded / 1024);
-            System.out.flush();
-        };
 
-        GitHubResolver gitHubResolver;
-        if(tokens.containsKey(Token.GITHUB))
-            gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
+        if(tokens.containsKey(Token.GITHUB)) gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
         else gitHubResolver = GitHubResolver.unauthorized(executorService);
 
         // check tokens and variables
@@ -177,225 +737,62 @@ public final class Enji {
 
         // install core
         Core core = project.core();
-        File coreFile = new File(tempFolder, "core.jar");
+        coreFile = new File(tempFolder, "core.jar");
+        int coreBuildId;
         switch (core.brand()) {
             case PAPER, PURPUR, VELOCITY -> {
                 String minecraftVersion = core.minecraftVersion();
                 String version = core.build();
                 assert minecraftVersion != null && version != null;
 
-                int build;
-                CoreResolver coreResolver = switch (core.brand()) {
-                    case PAPER -> PaperCoreResolver.createPaper(executorService);
-                    case PURPUR -> PurpurCoreResolver.create(executorService);
-                    case VELOCITY -> PaperCoreResolver.createVelocity(executorService);
-                };
+                CoreResolver coreResolver = core.brand().createCoreResolver(executorService);
+                coreBuildId = Core.resolveBuildId(core, coreResolver);
 
-                if(version.equalsIgnoreCase("%latest%"))
-                    build = coreResolver.latestBuild(minecraftVersion).block();
-                else {
-                    try {build = Integer.parseInt(version);}
-                    catch (Exception _) {build = -1;}
-                }
-
-                if(build == -1)
+                if(coreBuildId == -1)
                     return Optional.of("can't resolve build number for core");
 
                 printInfo("downloading core...");
-                DownloadExitCode downloadExitCode = coreResolver.downloadBuild(downloadProgressConsumer, minecraftVersion, build, coreFile).block();
+                DownloadExitCode downloadExitCode = coreResolver.downloadBuild(DOWNLOAD_PROGRESS_CONSUMER, minecraftVersion, coreBuildId, coreFile).block();
                 if(downloadExitCode != DownloadExitCode.OK) {
                     return Optional.of("problem downloading core. exit code " + downloadExitCode.name().toUpperCase());
                 }
                 System.out.println();
             }
+            default -> coreBuildId = -1;
         }
 
         // install hitori and modules
-        Hitori hitori = project.hitori();
-        File hitoriFile = new File(tempFolder, "hitori.jar");
-        File modulesFolder = new File(tempFolder, "modules/");
-        Map<String, File> modulesFiles = new HashMap<>();
-        if(hitori != null) {
-            String version = hitori.version();
-
-            Either<Integer, String> retrievalStrategy;
-            if(version.equalsIgnoreCase("%latest%"))
-                retrievalStrategy = Either.ofFirst(gitHubResolver.latestRelease(HITORI_REPO_OWNER, HITORI_REPO).block());
-            else retrievalStrategy = Either.ofSecond(version);
-
-            List<ReleaseAsset> releaseAssets = gitHubResolver.listAssetsOfRelease(
-                    HITORI_REPO_OWNER,
-                    HITORI_REPO,
-                    retrievalStrategy
-            ).block();
-
-            ReleaseAsset releaseAsset = null;
-            for (ReleaseAsset asset : releaseAssets) {;
-                if(asset.name().startsWith("hitori") && asset.name().endsWith(".jar")) {
-                    releaseAsset = asset;
-                    break;
-                }
-            }
-
-            if(releaseAsset == null)
-                return Optional.of("unable to resolve hitori release.");
-
-            printInfo("downloading hitori...");
-            if(!gitHubResolver.downloadReleaseAsset(downloadProgressConsumer, releaseAsset, hitoriFile).block())
-                return Optional.of("unable to download release");
-            System.out.println();
-
-            modulesFolder.mkdirs();
-            for (HitoriModule module : hitori.modules()) {
-                String name = module.name();
-                File file = new File(modulesFolder, name.replace(':', '_') + ".jar");
-
-                printInfo("downloading module \"" + name + "\"...");
-                Optional<String> error = downloadFromPluginSource(
-                        gitHubResolver,
-                        downloadProgressConsumer,
-                        module.source(),
-                        file
-                );
-                if(error.isPresent()) {
-                    return Optional.of("problem downloading module \"" + name + "\": " + error.get());
-                }
-                System.out.println();
-
-                modulesFiles.put(name, file);
-            }
+        if(project.hitori() != null) {
+            Optional<String> hitoriInstallError = downloadHitori(project.hitori(), true);
+            if(hitoriInstallError.isPresent())
+                return hitoriInstallError;
         }
 
         // install plugins
-        Map<String, File> pluginsFiles = new HashMap<>();
-        File pluginsFolder = new File(tempFolder, "plugins/");
+        pluginsFiles = new HashMap<>();
+        File pluginsFolder = new File(tempFolder, PLUGINS_DIR);
         pluginsFolder.mkdirs();
-        for (Plugin plugin : project.plugins()) {
-            String name = plugin.name();
-            File pluginFile = new File(pluginsFolder, name.replace(':', '_') + ".jar");
+        for (Plugin plugin : project.plugins().values()) {
+            var either = downloadPlugin(pluginsFolder, plugin);
+            if(either.firstPresent())
+                return Optional.of(either.first());
 
-            printInfo("downloading plugin \"" + name + "\"...");
-            Optional<String> error = downloadFromPluginSource(
-                    gitHubResolver,
-                    downloadProgressConsumer,
-                    plugin.source(),
-                    pluginFile
-            );
-            if(error.isPresent()) {
-                return Optional.of("problem downloading plugin \"" + name + "\": " + error.get());
-            }
-            System.out.println();
-
-            pluginsFiles.put(name, pluginFile);
+            pluginsFiles.put(plugin.name(), either.second());
         }
 
         // install configs
-        Origin origin = project.origin();
-
-        String[] unboxedRepo = origin.repo().split("/", 2);
-        if(unboxedRepo.length != 2) return Optional.of("malformed origin repo format");
-
-        File configsFolder = new File(tempFolder, "configs/");
-        Map<String, File> configsFiles = new HashMap<>();
-        configsFolder.mkdirs();
-
-        String projectPath = origin.path();
-        int lastSeparator = projectPath.lastIndexOf('/');
-        String basePath;
-        if(lastSeparator == -1) basePath = "";
-        else basePath = projectPath.substring(0, lastSeparator + 1);
-
-        for (Config config : configsRepository.configs()) {
-            File configFile = new File(configsFolder, config.path());
-            configFile.getParentFile().mkdirs();
-
-            if(!gitHubResolver.downloadFile(downloadProgressConsumer, unboxedRepo[0], unboxedRepo[1], origin.branch(), basePath + config.path(), configFile).block()) {
-                printWarning("unable to resolve " + config.path() + " config file.");
-                continue;
-            }
-            System.out.println();
-
-            configsFiles.put(config.path(), configFile);
-        }
+        Optional<String> configsDownloadError = downloadConfigs();
+        if(configsDownloadError.isPresent())
+            return configsDownloadError;
 
         printInfo("copying everything...");
         // copy everything and process configs
-        moveFile(coreFile, new File(workingDirectory, "server.jar"));
-
-        File outPluginsFolder = new File(workingDirectory, "plugins/");
-        outPluginsFolder.mkdirs();
-        if(hitori != null) {
-            moveFile(hitoriFile, new File(outPluginsFolder, "hitori.jar"));
-
-            File outHitoriFolder = new File(outPluginsFolder, "hitori/");
-            outHitoriFolder.mkdir();
-            for (File moduleFile : modulesFiles.values()) {
-                moveFile(moduleFile, new File(outHitoriFolder, moduleFile.getName()));
-            }
-        }
-
-        for (File pluginFile : pluginsFiles.values()) {
-            moveFile(pluginFile, new File(outPluginsFolder, pluginFile.getName()));
-        }
-
-        for (Map.Entry<String, File> entry : configsFiles.entrySet()) {
-            String path = entry.getKey();
-            File configFile = entry.getValue();
-            try {
-                copyConfigAndProcessPlaceholders(configFile, new File(workingDirectory, path), variables);
-            }
-            catch (Exception e) {
-                return Optional.of("problem copying config \"" + path + "\": " + e.getMessage());
-            }
-        }
-
-        printInfo("cleaning...");
-        IOUtil.deleteFileRecursively(pluginsFolder);
-        IOUtil.deleteFileRecursively(coreFile);
-        IOUtil.deleteFileRecursively(hitoriFile);
-        IOUtil.deleteFileRecursively(modulesFolder);
+        Optional<String> copyError = copyAndCleanup(true, true, true, variables);
+        if(copyError.isPresent())
+            return copyError;
 
         printInfo("creating installation metadata...");
-        JSONObject tokensBody = new JSONObject();
-        for (Map.Entry<Token, String> entry : tokens.entrySet()) {
-            tokensBody.put(entry.getKey().name().toLowerCase(), entry.getValue());
-        }
-        JSONObject json = new JSONObject()
-                .put(
-                        "origin",
-                        new JSONObject()
-                                .put("repo", origin.repo())
-                                .put("branch", origin.branch())
-                                .put("path", origin.path())
-                )
-                .put("auto_update", project.autoUpdate())
-                .put(
-                        "run_command",
-                        new JSONObject()
-                                .put("command", String.format(
-                                        "%s %s -jar server.jar nogui",
-                                        javaPath,
-                                        project.jvmArgs()
-                                ))
-                                .put(
-                                        "decomposed",
-                                        new JSONObject()
-                                                .put("java_path", javaPath)
-                                                .put("jvm_args", project.jvmArgs())
-                                )
-                )
-                .put("configs", new JSONArray().putAll(configsFiles.keySet()))
-                .put("variables", new JSONObject(variables))
-                .put("tokens", tokensBody);
-
-        try (FileWriter writer = new FileWriter(new File(workingDirectory, ".enji/installation.json"))) {
-            writer.write(json.toString(2));
-            writer.flush();
-        }
-        catch (IOException _) {
-            return Optional.of("problem creating installation metadata");
-        }
-
+        writeInstallationMetadata(tokens, variables, javaPath, coreBuildId);
         printInfo("done!");
 
         return Optional.empty();
@@ -531,10 +928,10 @@ public final class Enji {
 
         // READ PLUGINS
         YamlSection pluginsSection = config.getSection("plugins");
-        List<Plugin> plugins;
-        if(pluginsSection == null) plugins = List.of();
+        Map<String, Plugin> plugins;
+        if(pluginsSection == null) plugins = Map.of();
         else {
-            plugins = new ArrayList<>();
+            plugins = new HashMap<>();
             for (String pluginName : pluginsSection.keySet()) {
                 YamlSection pluginSection = pluginsSection.getSection(pluginName);
                 if(pluginSection == null) continue;
@@ -562,7 +959,7 @@ public final class Enji {
                     }
                 }
 
-                plugins.add(new Plugin(
+                plugins.put(pluginName, new Plugin(
                         pluginName,
                         pluginSourceOrError.first(),
                         configs
@@ -580,10 +977,10 @@ public final class Enji {
             if(version.isEmpty()) return Optional.of("hitori version is empty");
 
             YamlSection modulesSection = hitoriSection.getSection("modules");
-            List<HitoriModule> modules;
-            if(modulesSection == null) modules = List.of();
+            Map<String, HitoriModule> modules;
+            if(modulesSection == null) modules = Map.of();
             else {
-                modules = new ArrayList<>();
+                modules = new HashMap<>();
                 for (String moduleKey : modulesSection.keySet()) {
                     YamlSection moduleSection = modulesSection.getSection(moduleKey);
                     if(moduleSection == null) continue;
@@ -611,7 +1008,7 @@ public final class Enji {
                         }
                     }
 
-                    modules.add(new HitoriModule(moduleKey, pluginSourceOrError.first(), configs));
+                    modules.put(moduleKey, new HitoriModule(pluginSourceOrError.first(), configs));
                 }
             }
 

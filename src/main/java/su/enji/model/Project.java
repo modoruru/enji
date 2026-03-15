@@ -6,6 +6,7 @@ import su.enji.model.hitori.Hitori;
 import su.enji.model.plugin.Plugin;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 // project collected from config
@@ -20,7 +21,7 @@ public record Project(Origin origin,
 
                       Core core,
 
-                      List<Plugin> plugins,
+                      Map<String, Plugin> plugins,
 
                       @Nullable Hitori hitori
 ) {

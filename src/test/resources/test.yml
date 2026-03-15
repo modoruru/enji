@@ -8,7 +8,7 @@ project:
   jvm_args: "-Xmx8G -Xms1G"
   auto_update: true
 
-# variables to ask user before installation
+# variables to ask user before installation. they can be used in the configs
 variables:
   server_port:
     description: Server port to use.

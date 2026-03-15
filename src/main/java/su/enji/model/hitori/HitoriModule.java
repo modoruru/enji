@@ -5,5 +5,5 @@ import su.enji.model.plugin.PluginSource;
 
 import java.util.List;
 
-public record HitoriModule(String name, PluginSource source, List<Config> configs) {
+public record HitoriModule(PluginSource source, List<Config> configs) {
 }

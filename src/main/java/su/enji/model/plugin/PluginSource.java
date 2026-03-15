@@ -40,6 +40,27 @@ public final class PluginSource {
         return uri;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if(!(obj instanceof PluginSource that)) return false;
+        if(this.type != that.type) return false;
+
+        return switch (this.type) {
+            case DIRECT -> {
+                assert this.uri != null;
+                yield this.uri.equals(that.uri);
+            }
+            case GITHUB -> {
+                assert this.repo != null && this.tag != null && this.asset != null;
+
+                yield this.repo.equalsIgnoreCase(that.repo)
+                        && this.tag.equalsIgnoreCase(that.tag)
+                        && this.asset.equalsIgnoreCase(that.asset);
+            }
+        };
+    }
+
+
     public static PluginSource createGithub(String repo, String tag, String asset) {
         return new PluginSource(PluginSourceType.GITHUB, repo, tag, asset, null);
     }

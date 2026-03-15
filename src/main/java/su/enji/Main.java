@@ -4,15 +4,12 @@ import org.json.JSONObject;
 import su.enji.model.Project;
 import su.enji.model.Token;
 import su.enji.model.Variable;
-import su.enji.util.IOUtil;
 import su.enji.util.JSONUtil;
 import su.enji.util.JavaUtil;
-import su.enji.util.Pair;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Files;
 import java.util.*;
 
 import static su.enji.util.PrintUtil.*;
@@ -56,7 +53,14 @@ public class Main {
 
         JSONObject body = JSONUtil.readFile(installationFile);
         if(body.optBoolean("auto_update", false)) {
-            // todo: update
+            Enji enji = new Enji(workingDirectory);
+            Optional<String> updateError = enji.update(null, null);
+            if(updateError.isPresent()) {
+                printFatal("problem auto-updating the project");
+                printFatal(updateError.get());
+                printFatal("execution aborted.");
+                return;
+            }
         }
 
         JSONObject runCommandBody = body.optJSONObject("run_command", null);
@@ -94,6 +98,12 @@ public class Main {
         File enjiDirectory = installationFile.getParentFile();
         enjiDirectory.mkdirs();
 
+        try {
+            Files.setAttribute(enjiDirectory.toPath(), "dos:hidden", Boolean.TRUE);
+        }
+        catch (Exception _) {
+        }
+
         printInfo("welcome to enji!");
         printInfo("please provide a url to YAML configuration which would be installed.");
         System.out.print("project uri > ");
@@ -111,25 +121,12 @@ public class Main {
         }
 
         File projectFile = new File(enjiDirectory, "project.yml");
-        try {
-            Pair<InputStream, Long> inputStreamAndSize = IOUtil.resolveToInputStream(uri);
-            if(inputStreamAndSize == null) {
-                printFatal("unable to resolve project configuration");
-                return;
-            }
-
-            try (InputStream inputStream = inputStreamAndSize.first(); FileOutputStream fos = new FileOutputStream(projectFile)) {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    fos.write(buffer, 0, bytesRead);
-                }
-                fos.flush();
-            }
-        }
-        catch (Exception e) {
-            printFatal("unable to resolve project configuration");
-            throw new RuntimeException(e);
+        Optional<String> downloadProjectFileError = Enji.downloadProjectFile(projectFile, uri);
+        if(downloadProjectFileError.isPresent()) {
+            printFatal("problem downloading project file");
+            printFatal(downloadProjectFileError.get());
+            printFatal("execution aborted.");
+            return;
         }
 
         printInfo("resolving...");

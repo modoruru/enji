@@ -1,6 +1,6 @@
 package su.enji.model.core;
 
-import org.jetbrains.annotations.Nullable;
+import su.enji.core.CoreResolver;
 import su.enji.model.config.Config;
 import su.enji.model.config.ConfigSource;
 import su.enji.model.config.ConfigsRepository;
@@ -12,13 +12,10 @@ public final class Core {
     private final CoreBrand brand;
     private final List<Config> configs;
 
-    // paper, purpur
-    @Nullable
     private final String minecraftVersion;
-    @Nullable
     private final String build;
 
-    private Core(CoreBrand brand, List<Config> configs, @Nullable String minecraftVersion, @Nullable String build) {
+    private Core(CoreBrand brand, List<Config> configs, String minecraftVersion, String build) {
         this.brand = brand;
         this.configs = configs;
         this.minecraftVersion = minecraftVersion;
@@ -39,6 +36,25 @@ public final class Core {
 
     public String build() {
         return build;
+    }
+
+    public boolean same(Core that) {
+        if((this.brand == CoreBrand.VELOCITY) != (that.brand == CoreBrand.VELOCITY)) return false;
+
+        return this.brand == that.brand && this.minecraftVersion.equalsIgnoreCase(that.minecraftVersion);
+    }
+
+    public static int resolveBuildId(Core core, CoreResolver coreResolver) {
+        assert core.build != null;
+
+        int coreBuildId;
+        if(core.build.equalsIgnoreCase("%latest%")) coreBuildId = coreResolver.latestBuild(core.minecraftVersion).block();
+        else {
+            try {coreBuildId = Integer.parseInt(core.build);}
+            catch (Exception _) {coreBuildId = -1;}
+        }
+
+        return coreBuildId;
     }
 
     public static Core velocity(ConfigsRepository configsRepository, String version, String build) {

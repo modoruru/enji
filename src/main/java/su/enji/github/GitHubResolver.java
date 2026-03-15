@@ -4,7 +4,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import su.enji.request.BlockingOperation;
 import su.enji.request.DownloadProgressConsumer;
-import su.enji.util.Either;
 import su.enji.util.IOUtil;
 
 import java.io.File;
@@ -36,6 +35,43 @@ public final class GitHubResolver {
     public static GitHubResolver authorized(ExecutorService executorService, String token) {
         if(token == null) return unauthorized(executorService);
         return new GitHubResolver(executorService, token);
+    }
+
+    public BlockingOperation<String> lastCommitHash(String owner, String repo, String branch) {
+        return BlockingOperation.run(executorService, () -> {
+            try {
+                URL url = IOUtil.createURL(String.format(
+                        "%s/repos/%s/%s/commits?sha=%s",
+                        API_ENDPOINT,
+                        owner,
+                        repo,
+                        branch
+                ));
+
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+
+                if(token != null) connection.setRequestProperty("Authorization", "token " + token);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+
+                connection.setRequestMethod("GET");
+
+                if(connection.getResponseCode() != 200)
+                    return null;
+
+                byte[] response = IOUtil.readResponse(connection);
+                if(response == null)
+                    return null;
+
+                connection.disconnect();
+
+                JSONObject responseBody = new JSONObject(new String(response, StandardCharsets.UTF_8));
+                return responseBody.getString("sha");
+            }
+            catch (Exception _) {
+                return null;
+            }
+        });
     }
 
     public BlockingOperation<Boolean> downloadReleaseAsset(DownloadProgressConsumer downloadProgressConsumer, ReleaseAsset releaseAsset, File output) {
@@ -71,7 +107,7 @@ public final class GitHubResolver {
         });
     }
 
-    public BlockingOperation<List<ReleaseAsset>> listAssetsOfRelease(String owner, String repo, Either<Integer, String> releaseIdOrTag) {
+    public BlockingOperation<List<ReleaseAsset>> listAssetsOfRelease(String owner, String repo, int releaseId) {
         return BlockingOperation.run(executorService, () -> {
             String assetsUrl;
 
@@ -81,9 +117,7 @@ public final class GitHubResolver {
                         API_ENDPOINT,
                         owner,
                         repo,
-                        releaseIdOrTag.firstPresent()
-                                ? releaseIdOrTag.first()
-                                : "tags/" + releaseIdOrTag.second()
+                        releaseId
                 ));
 
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
@@ -154,6 +188,43 @@ public final class GitHubResolver {
             }
             catch (Exception _) {
                 return List.of();
+            }
+        });
+    }
+
+    public BlockingOperation<Integer> releaseIdByTag(String owner, String repo, String tag) {
+        return BlockingOperation.run(executorService, () -> {
+            try {
+                URL url = IOUtil.createURL(String.format(
+                        "%s/repos/%s/%s/releases/tags/%s",
+                        API_ENDPOINT,
+                        owner,
+                        repo,
+                        tag
+                ));
+
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+
+                if(token != null) connection.setRequestProperty("Authorization", "token " + token);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+
+                connection.setRequestMethod("GET");
+
+                if(connection.getResponseCode() != 200)
+                    return -1;
+
+                byte[] response = IOUtil.readResponse(connection);
+                if(response == null)
+                    return -1;
+
+                connection.disconnect();
+
+                JSONObject responseBody = new JSONObject(new String(response, StandardCharsets.UTF_8));
+                return responseBody.optInt("id", -1);
+            }
+            catch (Exception _) {
+                return -1;
             }
         });
     }
