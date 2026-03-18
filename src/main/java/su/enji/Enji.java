@@ -192,7 +192,7 @@ public final class Enji {
 
     private void moveFile(File input, File output) {
         try {
-            Files.move(input.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE);
+            Files.move(input.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         }
         catch (Exception _) {
         }
@@ -543,6 +543,8 @@ public final class Enji {
         );
         if(metadataWriteError.isPresent())
             return metadataWriteError;
+
+        moveFile(remoteProjectFile, currentProjectFile);
 
         return copyAndCleanup(core, plugins, hitori, variables);
     }
