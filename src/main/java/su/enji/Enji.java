@@ -97,8 +97,8 @@ public final class Enji {
                 fos.flush();
             }
         }
-        catch (Exception e) {
-            return Optional.of("unable to resolve project configuration: " + e.getMessage());
+        catch (Exception exception) {
+            return Optional.of("unable to resolve project configuration: " + exception);
         }
 
         return Optional.empty();
@@ -194,7 +194,8 @@ public final class Enji {
         try {
             Files.move(input.toPath(), output.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         }
-        catch (Exception _) {
+        catch (Exception exception) {
+            exception.printStackTrace();
         }
     }
 
@@ -248,8 +249,8 @@ public final class Enji {
                 moveConfigAndProcessPlaceholders(configFile, new File(workingDirectory, path), variables);
                 configFile.delete();
             }
-            catch (Exception e) {
-                return Optional.of("problem copying config \"" + path + "\": " + e.getMessage());
+            catch (Exception exception) {
+                return Optional.of("problem copying config \"" + path + "\": " + exception);
             }
         }
 
@@ -710,7 +711,6 @@ public final class Enji {
         if(unboxedRepo.length != 2) return Optional.of("malformed origin repo format");
 
         File configsFolder = new File(tempFolder, "configs/");
-        configsFiles = new HashMap<>();
         configsFolder.mkdirs();
 
         String projectPath = origin.path();
@@ -800,6 +800,7 @@ public final class Enji {
         }
 
         // install configs
+        configsFiles = new HashMap<>();
         Optional<String> configsDownloadError = downloadConfigs();
         if(configsDownloadError.isPresent())
             return configsDownloadError;
@@ -824,8 +825,8 @@ public final class Enji {
         try {
             config.load(yamlConfiguration);
         }
-        catch (Exception e) {
-            e.printStackTrace();
+        catch (Exception exception) {
+            exception.printStackTrace();
             return Optional.of("malformed yaml file");
         }
 
