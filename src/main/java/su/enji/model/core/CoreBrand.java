@@ -11,7 +11,8 @@ public enum CoreBrand {
 
     PAPER(PaperCoreResolver::createPaper),
     PURPUR(PurpurCoreResolver::create),
-    VELOCITY(PaperCoreResolver::createVelocity);
+    VELOCITY(PaperCoreResolver::createVelocity),
+    FOLIA(PaperCoreResolver::createFolia);
 
     private final Function<ExecutorService, CoreResolver> coreResolverFunction;
 

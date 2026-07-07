@@ -23,6 +23,7 @@ public final class PaperCoreResolver implements CoreResolver {
     private static final String
             VELOCITY = "velocity",
             PAPER = "paper",
+            FOLIA = "folia",
             BASE_ENDPOINT = "https://fill.papermc.io/v3/projects/%s/versions/";
 
     private final ExecutorService executorService;
@@ -39,6 +40,10 @@ public final class PaperCoreResolver implements CoreResolver {
 
     public static PaperCoreResolver createPaper(ExecutorService executorService) {
         return new PaperCoreResolver(executorService, PAPER);
+    }
+
+    public static PaperCoreResolver createFolia(ExecutorService executorService) {
+        return new PaperCoreResolver(executorService, FOLIA);
     }
 
     @Override

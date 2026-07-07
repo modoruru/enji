@@ -70,8 +70,16 @@ public final class Core {
     }
 
     public static Core paper(ConfigsRepository configsRepository, String minecraftVersion, String build) {
+        return paperBased(CoreBrand.PAPER, configsRepository, minecraftVersion, build);
+    }
+
+    public static Core folia(ConfigsRepository configsRepository, String minecraftVersion, String build) {
+        return paperBased(CoreBrand.FOLIA, configsRepository, minecraftVersion, build);
+    }
+
+    private static Core paperBased(CoreBrand brand, ConfigsRepository configsRepository, String minecraftVersion, String build) {
         return new Core(
-                CoreBrand.PAPER,
+                brand,
                 configsRepository.createMany(
                         ConfigSource.CORE,
                         "server.properties",

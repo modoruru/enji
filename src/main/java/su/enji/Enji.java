@@ -380,7 +380,7 @@ public final class Enji {
         if(variableValidationError.isPresent()) return variableValidationError;
 
         // reinitialize GitHub resolver with new token
-        if(project.tokens().contains(Token.GITHUB)) gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
+        if(tokens.containsKey(Token.GITHUB)) gitHubResolver = GitHubResolver.authorized(executorService, tokens.get(Token.GITHUB));
         else gitHubResolver = GitHubResolver.unauthorized(executorService);
 
         boolean core = false,
@@ -919,7 +919,7 @@ public final class Enji {
 
         String coreParseError = null;
         Core core = switch (coreBrand) {
-            case PAPER, PURPUR -> {
+            case PAPER, FOLIA, PURPUR -> {
                 String minecraftVersion = coreSection.getString("minecraft_version", "");
                 String build = coreSection.getString("build", "");
                 if(minecraftVersion.isEmpty() || build.isEmpty()) {
@@ -927,9 +927,12 @@ public final class Enji {
                     yield null;
                 }
 
-                yield coreBrand == CoreBrand.PAPER
-                        ? Core.paper(configsRepository, minecraftVersion, build)
-                        : Core.purpur(configsRepository, minecraftVersion, build);
+                yield switch (coreBrand) {
+                    case PAPER -> Core.paper(configsRepository, minecraftVersion, build);
+                    case FOLIA -> Core.folia(configsRepository, minecraftVersion, build);
+                    case PURPUR -> Core.purpur(configsRepository, minecraftVersion, build);
+                    default -> throw new UnsupportedOperationException();
+                };
             }
             case VELOCITY -> {
                 String version = coreSection.getString("version", "");

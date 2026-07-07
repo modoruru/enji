@@ -291,6 +291,9 @@ public class Main {
     }
 
     private static void modify() {
+        printFatal("modify command is WIP");
+        if(true) return;
+
         File workingDirectory = resolveWorkingDirectory();
         if(workingDirectory == null) return;
 
@@ -300,7 +303,35 @@ public class Main {
             return;
         }
 
+        /*
+        what user should be able to modify
+        - variables
+        - java path
+        - tokens
+        */
 
+        printInfo("what would you like to modify?");
+        printInfo("variables, javapath or tokens");
+        printInfo("type \"exit\" to close enji modify");
+        System.out.print("option > ");
+
+        Scanner scanner = new Scanner(System.in);
+        String option = scanner.nextLine();
+        switch (option) {
+            case "variables" -> {
+
+            }
+            case "javapath" -> {
+
+            }
+            case "tokens" -> {
+
+            }
+            default -> {
+                printFatal("no such option.");
+                return;
+            }
+        }
     }
 
     private static void printHelp() {

@@ -23,7 +23,7 @@ variables:
     default: "localhost:25566"
 
 core:
-  # paper, purpur, velocity
+  # paper, folia, purpur, velocity
   brand: paper
   minecraft_version: 1.21.11
   build: "%latest%"
