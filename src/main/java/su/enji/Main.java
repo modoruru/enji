@@ -57,6 +57,11 @@ public class Main {
         }
 
         JSONObject body = JSONUtil.readFile(installationFile);
+        if(body == null) {
+            printFatal("malformed installation metadata.");
+            return;
+        }
+
         if(body.optBoolean("auto_update", false)) {
             Enji enji = new Enji(workingDirectory);
             Optional<String> updateError = enji.update(null, null);
@@ -291,15 +296,27 @@ public class Main {
     }
 
     private static void modify() {
-        printFatal("modify command is WIP");
-        if(true) return;
-
         File workingDirectory = resolveWorkingDirectory();
         if(workingDirectory == null) return;
 
         File installationFile = new File(workingDirectory, ".enji/installation.json");
         if(!installationFile.exists()) {
             printFatal("there's no active installation. run enji install first.");
+            return;
+        }
+
+        JSONObject installationBody = JSONUtil.readFile(installationFile);
+        if(installationBody == null) {
+            printFatal("malformed installation metadata.");
+            return;
+        }
+
+        JSONObject
+                variables = installationBody.optJSONObject("variables"),
+                runCommand = installationBody.optJSONObject("run_command"),
+                tokens = installationBody.optJSONObject("tokens");
+        if(variables == null || runCommand == null || tokens == null) {
+            printFatal("malformed installation metadata.");
             return;
         }
 
@@ -311,7 +328,7 @@ public class Main {
         */
 
         printInfo("what would you like to modify?");
-        printInfo("variables, javapath or tokens");
+        printInfo("variables (WIP), javapath or tokens (WIP)");
         printInfo("type \"exit\" to close enji modify");
         System.out.print("option > ");
 
@@ -322,15 +339,106 @@ public class Main {
 
             }
             case "javapath" -> {
+                JSONObject decomposed = runCommand.optJSONObject("decomposed");
+                if(decomposed == null) {
+                    printFatal("malformed installation metadata.");
+                    return;
+                }
 
+                String javaPath;
+                while (true) {
+                    System.out.print("new java binary path > ");
+
+                    javaPath = scanner.nextLine();
+                    if(javaPath.isEmpty()) javaPath = "java";
+
+                    printInfo("checking... ");
+                    if(JavaUtil.checkJavaInstallation(javaPath)) break;
+
+                    System.out.print('\r');
+                    printFatal("\"" + javaPath + "\" installation is not valid");
+                }
+
+                runCommand.put("command", String.format(
+                        "%s %s -jar %s nogui",
+                        javaPath,
+                        decomposed.optString("jvm_args"),
+                        Enji.SERVER_JAR
+                ));
+                runCommand.put(
+                        "decomposed",
+                        decomposed.put("java_path", javaPath)
+                );
+
+                installationBody.put("run_command", runCommand);
+
+                try (FileWriter writer = new FileWriter(installationFile)) {
+                    writer.write(installationBody.toString(2));
+                    writer.flush();
+                }
+                catch (IOException exception) {
+                    printFatal("problem updating installation metadata: " + exception.getMessage());
+                }
             }
             case "tokens" -> {
+                if(tokens.isEmpty()) {
+                    printFatal("no tokens present in this installation.");
+                    return;
+                }
 
+                File projectFile = new File(workingDirectory, ".enji/prject.yml");
+                if(!projectFile.exists()) {
+                    printFatal("modifying tokens requires re-reading project file but it's missing.");
+                    return;
+                }
+
+                Enji enji = new Enji(workingDirectory);
+                Optional<String> readError = enji.readProject(projectFile);
+                if(readError.isPresent()) {
+                    printFatal("problem re-reading project");
+                    printFatal(readError.get());
+                    printFatal("execution aborted.");
+                    return;
+                }
+
+                Set<Token> projectTokens = enji.project().tokens();
+                if(projectTokens.isEmpty()) {
+                    printFatal("some magic is happening here: installation metadata says there are some tokens but project file says opposite.");
+                    return;
+                }
+
+                final StringBuilder tokensMessageBuilder = new StringBuilder("tokens ");
+
+                Iterator<Token> iterator = projectTokens.iterator();
+                while (iterator.hasNext()) {
+                    tokensMessageBuilder.append(iterator.next().name().toLowerCase());
+
+                    if(iterator.hasNext()) tokensMessageBuilder.append(", ");
+                }
+
+                tokensMessageBuilder.append(" are available for modification. choose which one you would like to modify");
+
+                final String tokensMessage = tokensMessageBuilder.toString();
+                while (true) {
+                    printInfo(tokensMessage);
+
+                    System.out.print("token type > ");
+                    String tokenName = scanner.nextLine();
+                    Token token;
+                    try {
+                        token = Token.valueOf(tokenName.toUpperCase());
+                    }
+                    catch (IllegalArgumentException _) {
+                        printFatal("no such error - aborting");
+                        return;
+                    }
+
+                    String tokenValue = scanner.nextLine();
+                    
+                }
             }
-            default -> {
-                printFatal("no such option.");
-                return;
-            }
+            case "exit" -> {}
+            default -> printFatal("no such option.");
         }
     }
 

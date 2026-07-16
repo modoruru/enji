@@ -35,7 +35,7 @@ public final class JSONUtil {
             return read(reader);
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            return null;
         }
     }
 

@@ -66,8 +66,7 @@ public final class JavaUtil {
             Process process = new ProcessBuilder(splitCommand(command))
                     .directory(directory)
                     .inheritIO()
-                    .start()
-                    ;
+                    .start();
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 if(!process.isAlive()) return;

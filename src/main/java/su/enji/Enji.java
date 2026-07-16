@@ -45,7 +45,7 @@ import static su.enji.util.PrintUtil.printWarning;
 @SuppressWarnings("ResultOfMethodCallIgnored")
 public final class Enji {
 
-    private static final String SERVER_JAR = "server.jar";
+    public static final String SERVER_JAR = "server.jar";
     private static final String HITORI_JAR = "hitori.jar";
     private static final String PLUGINS_DIR = "plugins/";
     private static final String HITORI_MODULES_DIR = "plugins/hitori/";
@@ -263,13 +263,8 @@ public final class Enji {
         if(!installationFile.exists())
             return Optional.of("installation doesn't exists in this folder.");
 
-        JSONObject json;
-        try {
-            json = JSONUtil.readFile(installationFile);
-        }
-        catch (Exception _) {
-            return Optional.of("malformed installation file.");
-        }
+        JSONObject json = JSONUtil.readFile(installationFile);
+        if(json == null) return Optional.of("malformed installation metadata.");
 
         JSONObject originBody = json.optJSONObject("origin"),
                 versionBody = json.optJSONObject("version"),
