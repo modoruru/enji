@@ -1,47 +1,50 @@
 package su.enji.request;
 
-import java.util.concurrent.CompletableFuture;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 public final class BlockingOperation<V> {
 
-    private final CompletableFuture<V> future;
+    private final AtomicBoolean waiting;
+    private @Nullable V result;
+    private @Nullable Throwable throwable;
 
-    private BlockingOperation(CompletableFuture<V> future) {
-        this.future = future;
-    }
-
-    public boolean done() {
-        return future.isDone();
-    }
-
-    public void cancel(boolean interrupt) {
-        future.cancel(interrupt);
+    private BlockingOperation() {
+        this.waiting = new AtomicBoolean(true);
     }
 
     public V block() {
-        try {
-            return future.join();
+        while (waiting.get()) {
+            Thread.onSpinWait();
         }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
 
-    public void subscribe(Consumer<V> consumer) {
-        future.thenAccept(consumer);
-    }
-
-    public CompletableFuture<V> backend() {
-        return future;
+        if(throwable != null) throw new RuntimeException(throwable);
+        return result;
     }
 
     public static <V> BlockingOperation<V> run(ExecutorService executorService, Supplier<V> supplier) {
-        CompletableFuture<V> future = new CompletableFuture<>();
-        executorService.execute(() -> future.complete(supplier.get()));
-        return new BlockingOperation<>(future);
+        BlockingOperation<V> blockingOperation = new BlockingOperation<>();
+        try {
+            executorService.execute(() -> {
+                try {
+                    blockingOperation.result = supplier.get();
+                }
+                catch (Throwable throwable) {
+                    blockingOperation.throwable = throwable;
+                }
+                finally {
+                    blockingOperation.waiting.set(false);
+                }
+            });
+        }
+        catch (Throwable throwable) {
+            blockingOperation.throwable = throwable;
+            blockingOperation.waiting.set(false);
+        }
+        return blockingOperation;
     }
 
     public static BlockingOperation<Void> runWithoutReturn(ExecutorService executorService, Runnable runnable) {

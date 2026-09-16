@@ -21,7 +21,7 @@ import static su.enji.util.PrintUtil.printInfo;
 
 public class Main {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         if(args.length == 0) {
             printHelp();
             return;
@@ -77,7 +77,7 @@ public class Main {
         String command;
         if(runCommandBody == null || (command = runCommandBody.optString("command", null)) == null) {
             printFatal("run command is not set");
-            System.exit(0);
+            System.exit(1);
             return;
         }
 
@@ -246,7 +246,7 @@ public class Main {
             printFatal("problem installing project");
             printFatal(installError.get());
             printFatal("execution aborted.");
-            System.exit(0);
+            System.exit(2);
             return;
         }
 

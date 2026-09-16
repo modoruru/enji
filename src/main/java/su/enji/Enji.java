@@ -836,10 +836,11 @@ public final class Enji {
         String description = projectSection.getString("description", "");
         String jvmArgs = projectSection.getString("jvm_args", "");
         if(name.isEmpty() || description.isEmpty() || jvmArgs.isEmpty())
-            return Optional.of("name, description or jvm_args is empty");
+            return Optional.of("name, description or jvm_args are empty");
 
         YamlSection originSection = projectSection.getSection("origin");
         if(originSection == null) return Optional.of("\"origin\" section doesn't exists.");
+
         String repo = originSection.getString("repo", ""),
                 branch = originSection.getString("branch", ""),
                 path = originSection.getString("path", "");
